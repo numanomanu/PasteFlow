@@ -24,15 +24,16 @@ public final class PasteService {
     public func paste(item: ClipItem, targetApp: NSRunningApplication?) {
         copyToClipboard(item: item)
 
-        guard let targetApp = targetApp, targetApp.bundleIdentifier != Bundle.main.bundleIdentifier else {
-            return
+        // Hide PasteFlow application so macOS returns focus to the target app
+        NSApp.hide(nil)
+
+        // Re-activate previous application if available
+        if let targetApp = targetApp, targetApp.bundleIdentifier != Bundle.main.bundleIdentifier {
+            targetApp.activate()
         }
 
-        // Activate previous application
-        targetApp.activate()
-
-        // Small delay to ensure the application has regained focus before posting keystroke
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        // Delay to allow macOS WindowServer to finish the focus transition before simulating keystroke
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             self.simulatePasteKeystroke()
         }
     }
@@ -72,10 +73,12 @@ public final class PasteService {
         }
     }
 
-    /// Simulate Cmd + V using CGEvent
-    private func simulatePasteKeystroke() {
+    /// Simulate Cmd + V
+    public func simulatePasteKeystroke() {
         guard isAccessibilityTrusted else {
-            print("Accessibility permission not granted. Keystroke simulation skipped.")
+            print("Accessibility not granted yet. Prompting user and attempting AppleScript fallback...")
+            promptForAccessibility()
+            simulateViaAppleScript()
             return
         }
 
@@ -84,6 +87,7 @@ public final class PasteService {
 
         guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: true),
               let keyUp = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: false) else {
+            simulateViaAppleScript()
             return
         }
 
@@ -92,5 +96,16 @@ public final class PasteService {
 
         keyDown.post(tap: .cghidEventTap)
         keyUp.post(tap: .cghidEventTap)
+    }
+
+    private func simulateViaAppleScript() {
+        let script = "tell application \"System Events\" to keystroke \"v\" using command down"
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                print("AppleScript paste fallback error: \(error)")
+            }
+        }
     }
 }

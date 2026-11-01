@@ -78,6 +78,7 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
         panel?.orderOut(nil)
         isVisible = false
         showingPreferences = false
+        NSApp.hide(nil)
     }
 
     public func pasteSelectedAndHide() {
@@ -121,8 +122,8 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
             return false
         }
 
-        // Return / Enter (key code 36)
-        if event.keyCode == 36 {
+        // Return / Enter (key code 36: Return, key code 76: Keypad Enter)
+        if event.keyCode == 36 || event.keyCode == 76 {
             pasteSelectedAndHide()
             return true
         }
