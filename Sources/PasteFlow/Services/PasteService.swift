@@ -13,26 +13,32 @@ public final class PasteService {
         AXIsProcessTrusted()
     }
 
-    /// Prompt user to enable accessibility in System Settings
+    /// Prompt user to enable accessibility in System Settings (ONLY called explicitly from Preferences)
     public func promptForAccessibility() {
         let promptKey = "AXTrustedCheckOptionPrompt" as CFString
         let options = [promptKey: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
     }
 
-    /// Copy item to pasteboard and automatically paste into previous application
+    /// Copy item to pasteboard and automatically paste into previous application if permitted
     public func paste(item: ClipItem, targetApp: NSRunningApplication?) {
+        // 1. Always copy to pasteboard first
         copyToClipboard(item: item)
 
-        // Hide PasteFlow application so macOS returns focus to the target app
+        // 2. Hide PasteFlow application so macOS returns focus to the target app
         NSApp.hide(nil)
 
-        // Re-activate previous application if available
+        // 3. Re-activate previous application if available
         if let targetApp = targetApp, targetApp.bundleIdentifier != Bundle.main.bundleIdentifier {
             targetApp.activate()
         }
 
-        // Delay to allow macOS WindowServer to finish the focus transition before simulating keystroke
+        // 4. If accessibility is trusted, simulate Cmd+V after focus settles
+        // NEVER spam system prompt dialogs during normal paste operations!
+        guard isAccessibilityTrusted else {
+            return
+        }
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             self.simulatePasteKeystroke()
         }
@@ -73,21 +79,13 @@ public final class PasteService {
         }
     }
 
-    /// Simulate Cmd + V
-    public func simulatePasteKeystroke() {
-        guard isAccessibilityTrusted else {
-            print("Accessibility not granted yet. Prompting user and attempting AppleScript fallback...")
-            promptForAccessibility()
-            simulateViaAppleScript()
-            return
-        }
-
+    /// Simulate Cmd + V via CGEvent (clean, silent, no AppleScript automation prompts)
+    private func simulatePasteKeystroke() {
         let source = CGEventSource(stateID: .combinedSessionState)
         let vKeyCode: CGKeyCode = 0x09 // 'v'
 
         guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: true),
               let keyUp = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: false) else {
-            simulateViaAppleScript()
             return
         }
 
@@ -96,16 +94,5 @@ public final class PasteService {
 
         keyDown.post(tap: .cghidEventTap)
         keyUp.post(tap: .cghidEventTap)
-    }
-
-    private func simulateViaAppleScript() {
-        let script = "tell application \"System Events\" to keystroke \"v\" using command down"
-        if let appleScript = NSAppleScript(source: script) {
-            var error: NSDictionary?
-            appleScript.executeAndReturnError(&error)
-            if let error = error {
-                print("AppleScript paste fallback error: \(error)")
-            }
-        }
     }
 }
