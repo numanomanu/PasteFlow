@@ -106,7 +106,8 @@ public struct MainPopupView: View {
                                 },
                                 onDoubleClick: {
                                     store.selectedItemId = item.id
-                                    windowManager.pasteSelectedAndHide()
+                                    let isShift = NSEvent.modifierFlags.contains(.shift)
+                                    windowManager.pasteSelectedAndHide(plainTextOnly: isShift)
                                 }
                             )
                             .id(item.id)

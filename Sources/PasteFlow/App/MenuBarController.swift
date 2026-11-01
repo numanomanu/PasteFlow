@@ -116,7 +116,8 @@ public final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func recentItemClicked(_ sender: NSMenuItem) {
         guard let item = sender.representedObject as? ClipItem else { return }
-        WindowManager.shared.pasteItemAndHide(item)
+        let isShift = NSEvent.modifierFlags.contains(.shift)
+        WindowManager.shared.pasteItemAndHide(item, plainTextOnly: isShift)
     }
 
     @objc private func clearHistory() {

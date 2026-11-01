@@ -2,9 +2,12 @@ import SwiftUI
 import AppKit
 
 public struct ClipPreviewView: View {
-    private enum HTMLPreviewMode: String, CaseIterable {
-        case text = "Text"
-        case rawHTML = "Raw HTML"
+    private enum PreviewMode: String, CaseIterable, Identifiable {
+        case rich = "Rich"
+        case plain = "Plain"
+        case rawHTML = "HTML"
+
+        var id: String { rawValue }
     }
 
     public let item: ClipItem?
@@ -14,7 +17,7 @@ public struct ClipPreviewView: View {
     public let onTogglePin: () -> Void
     public let onDelete: () -> Void
 
-    @State private var previewMode: HTMLPreviewMode = .text
+    @State private var previewMode: PreviewMode = .rich
 
     public init(
         item: ClipItem?,
@@ -59,6 +62,20 @@ public struct ClipPreviewView: View {
                     .padding(.vertical, 8)
             }
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.3))
+            .onAppear {
+                if item.hasRichText {
+                    previewMode = .rich
+                } else {
+                    previewMode = .plain
+                }
+            }
+            .onChange(of: item.id) { _, _ in
+                if item.hasRichText {
+                    previewMode = .rich
+                } else {
+                    previewMode = .plain
+                }
+            }
         } else {
             VStack(spacing: 10) {
                 Image(systemName: "doc.on.clipboard")
@@ -145,33 +162,107 @@ public struct ClipPreviewView: View {
         }
     }
 
+    private var availableModes: [PreviewMode] {
+        guard let item = item else { return [.plain] }
+        if item.hasHTML {
+            return [.rich, .plain, .rawHTML]
+        } else if item.hasRichText {
+            return [.rich, .plain]
+        } else {
+            return [.plain]
+        }
+    }
+
+    @ViewBuilder
+    private func modeSelector(for item: ClipItem) -> some View {
+        let modes = availableModes
+        if modes.count > 1 {
+            HStack {
+                Picker("", selection: $previewMode) {
+                    ForEach(modes) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: modes.count == 3 ? 190 : 130)
+
+                Spacer()
+            }
+            .padding(.bottom, 2)
+        }
+    }
+
+    private func renderedAttributedString(for item: ClipItem) -> NSAttributedString? {
+        // 1. Try HTML content first
+        if let html = item.htmlContent, let data = html.data(using: .utf8) {
+            let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
+                .documentType: NSAttributedString.DocumentType.html,
+                .characterEncoding: String.Encoding.utf8.rawValue
+            ]
+            if let attr = try? NSAttributedString(data: data, options: options, documentAttributes: nil) {
+                return attr
+            }
+        }
+
+        // 2. Try raw HTML in plainText if hasHTML
+        if item.hasHTML, let text = item.plainText, let data = text.data(using: .utf8) {
+            let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
+                .documentType: NSAttributedString.DocumentType.html,
+                .characterEncoding: String.Encoding.utf8.rawValue
+            ]
+            if let attr = try? NSAttributedString(data: data, options: options, documentAttributes: nil) {
+                return attr
+            }
+        }
+
+        // 3. Try RTF data
+        if let rtf = item.richTextRTF {
+            let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
+                .documentType: NSAttributedString.DocumentType.rtf
+            ]
+            if let attr = try? NSAttributedString(data: rtf, options: options, documentAttributes: nil) {
+                return attr
+            }
+        }
+
+        return nil
+    }
+
+    @ViewBuilder
+    private func richRenderedView(for item: ClipItem) -> some View {
+        if let attr = renderedAttributedString(for: item) {
+            Text(AttributedString(attr))
+                .font(.system(size: 12))
+                .textSelection(.enabled)
+                .lineSpacing(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            Text(item.plainText ?? "")
+                .font(.system(size: 12, design: isCodeLike(item.plainText) ? .monospaced : .default))
+                .foregroundColor(.primary)
+                .textSelection(.enabled)
+                .lineSpacing(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     private func textPreviewBody(item: ClipItem) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            if item.hasHTML {
-                HStack {
-                    Picker("", selection: $previewMode) {
-                        ForEach(HTMLPreviewMode.allCases, id: \.self) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 170)
+            modeSelector(for: item)
 
-                    Spacer()
-                }
-                .padding(.bottom, 2)
-            }
-
-            if item.hasHTML && previewMode == .rawHTML {
-                Text(item.htmlContent ?? "")
-                    .font(.system(size: 11, design: .monospaced))
+            switch previewMode {
+            case .rich:
+                richRenderedView(for: item)
+            case .plain:
+                Text(item.plainText ?? "")
+                    .font(.system(size: 12, design: isCodeLike(item.plainText) ? .monospaced : .default))
                     .foregroundColor(.primary)
                     .textSelection(.enabled)
                     .lineSpacing(3)
                     .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                Text(item.plainText ?? "")
-                    .font(.system(size: 12, design: isCodeLike(item.plainText) ? .monospaced : .default))
+            case .rawHTML:
+                Text(item.htmlContent ?? (item.plainText ?? ""))
+                    .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.primary)
                     .textSelection(.enabled)
                     .lineSpacing(3)
@@ -214,10 +305,31 @@ public struct ClipPreviewView: View {
             .padding(10)
             .background(RoundedRectangle(cornerRadius: 8).fill(Color.cyan.opacity(0.08)))
 
-            Text(item.plainText ?? "")
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(.blue)
-                .textSelection(.enabled)
+            if availableModes.count > 1 {
+                modeSelector(for: item)
+
+                switch previewMode {
+                case .rich:
+                    richRenderedView(for: item)
+                case .plain:
+                    Text(item.plainText ?? "")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(.blue)
+                        .textSelection(.enabled)
+                case .rawHTML:
+                    Text(item.htmlContent ?? (item.plainText ?? ""))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.primary)
+                        .textSelection(.enabled)
+                        .lineSpacing(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                Text(item.plainText ?? "")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(.blue)
+                    .textSelection(.enabled)
+            }
         }
     }
 
@@ -339,13 +451,13 @@ public struct ClipPreviewView: View {
                 .controlSize(.small)
                 .help("Copy (⌘C)")
 
-                if item.hasRichText {
+                if item.type == .text || item.type == .link {
                     Button(action: onPastePlain) {
                         HStack(spacing: 4) {
                             Image(systemName: "text.alignleft")
                                 .font(.system(size: 10))
                             Text("Plain")
-                                .font(.system(size: 11))
+                                .font(.system(size: 11, weight: item.hasRichText ? .semibold : .regular))
                         }
                     }
                     .buttonStyle(.bordered)

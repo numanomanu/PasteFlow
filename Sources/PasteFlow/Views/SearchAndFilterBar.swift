@@ -54,15 +54,13 @@ public struct SearchAndFilterBar: View {
                                 store.selectFirstItem()
                             }
                         }) {
-                            HStack(spacing: 4) {
+                            HStack(spacing: 5) {
                                 Image(systemName: category.iconName)
-                                    .font(.system(size: category == .all ? 10 : 11, weight: .semibold))
-                                if category == .all || category == .html || store.selectedCategory == category {
-                                    Text(category.rawValue)
-                                        .font(.system(size: 11, weight: store.selectedCategory == category ? .semibold : .regular))
-                                }
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text(category.rawValue)
+                                    .font(.system(size: 11, weight: store.selectedCategory == category ? .semibold : .regular))
                             }
-                            .padding(.horizontal, (category == .all || category == .html || store.selectedCategory == category) ? 10 : 8)
+                            .padding(.horizontal, 10)
                             .padding(.vertical, 4)
                             .background(
                                 Capsule()

@@ -109,12 +109,57 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
 
     // MARK: - Computed Properties
 
+    public var isEditorSource: Bool {
+        let bundle = (sourceAppBundleId ?? "").lowercased()
+        let name = (sourceAppName ?? "").lowercased()
+        let editorKeywords = ["vscode", "code", "xcode", "sublime", "intellij", "jetbrains", "studio", "fleet", "cursor", "nova", "atom", "bbedit"]
+        return editorKeywords.contains { bundle.contains($0) || name.contains($0) }
+    }
+
     public var hasHTML: Bool {
-        !(htmlContent?.isEmpty ?? true)
+        // 1. Check if htmlContent contains meaningful structural rich tags
+        if let html = htmlContent, !html.isEmpty {
+            let lower = html.lowercased()
+            let structuralTags = [
+                "<a ", "<a\n", "<a>", "<b ", "<b>", "<strong", "<i ", "<i>", "<em",
+                "<u ", "<u>", "<s ", "<s>", "<del", "<code", "<pre", "<ul", "<ol",
+                "<li", "<table", "<tr", "<td", "<th", "<h1", "<h2", "<h3", "<h4",
+                "<h5", "<h6", "<blockquote", "<img", "<hr", "<p>", "<p ", "<dl",
+                "<dt", "<dd", "</a>", "</b>", "</strong>", "</i>", "</em>", "</u>",
+                "</s>", "</del>", "</code>", "</pre>", "</ul>", "</ol>", "</li>",
+                "</table>", "</tr>", "</td>", "</th>", "</h", "</blockquote>", "</p>"
+            ]
+            if structuralTags.contains(where: { lower.contains($0) }) {
+                return true
+            }
+            // If not an editor source and has generic htmlContent containing tags, treat as HTML
+            if !isEditorSource && (lower.contains("<p") || lower.contains("<div") || lower.contains("<table")) {
+                return true
+            }
+        }
+
+        // 2. Check if plainText itself contains explicit HTML structure
+        if let text = plainText, !text.isEmpty {
+            let lower = text.lowercased()
+            let plainSignatures = [
+                "<html", "<!doctype", "<div", "<p>", "<p ", "<table", "<a href",
+                "<span", "</span>", "</div>", "</p>", "</a>", "</html>", "</table>",
+                "<b>", "</b>", "<strong>", "</strong>", "<ul>", "<li>"
+            ]
+            if plainSignatures.contains(where: { lower.contains($0) }) {
+                return true
+            }
+        }
+
+        return false
     }
 
     public var hasRichText: Bool {
-        hasHTML || richTextRTF != nil
+        if hasHTML { return true }
+        if let _ = richTextRTF {
+            return !isEditorSource
+        }
+        return false
     }
 
     public var title: String {

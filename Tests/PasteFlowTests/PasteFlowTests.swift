@@ -61,6 +61,14 @@ import AppKit
     let plainItem = ClipItem(type: .text, plainText: "Plain text only")
     let htmlItem = ClipItem(type: .text, plainText: "HTML text", htmlContent: "<b>HTML text</b>")
     let rtfItem = ClipItem(type: .text, plainText: "RTF text", richTextRTF: "{\\rtf1 test}".data(using: .utf8))
+    let rawHTMLSnippet = ClipItem(type: .text, plainText: "<div><span>Raw HTML</span></div>")
+    let vsCodeItem = ClipItem(
+        type: .text,
+        plainText: "let x = 1",
+        htmlContent: "<div style=\"color:#d4d4d4;\"><span style=\"color:#569cd6;\">let</span> x = 1</div>",
+        sourceAppName: "Visual Studio Code",
+        sourceAppBundleId: "com.microsoft.VSCode"
+    )
 
     #expect(plainItem.hasHTML == false)
     #expect(plainItem.hasRichText == false)
@@ -71,14 +79,23 @@ import AppKit
     #expect(rtfItem.hasHTML == false)
     #expect(rtfItem.hasRichText == true)
 
+    #expect(rawHTMLSnippet.hasHTML == true)
+    #expect(rawHTMLSnippet.hasRichText == true)
+
+    // VSCode syntax highlight copy should NOT be classified as HTML
+    #expect(vsCodeItem.hasHTML == false)
+    #expect(vsCodeItem.hasRichText == false)
+
     let store = HistoryStore()
-    store.items = [plainItem, htmlItem, rtfItem]
+    store.items = [plainItem, htmlItem, rtfItem, rawHTMLSnippet, vsCodeItem]
 
     store.selectedCategory = .html
-    #expect(store.filteredItems.count == 2)
+    #expect(store.filteredItems.count == 3)
     #expect(store.filteredItems.contains { $0.id == htmlItem.id })
     #expect(store.filteredItems.contains { $0.id == rtfItem.id })
+    #expect(store.filteredItems.contains { $0.id == rawHTMLSnippet.id })
     #expect(!store.filteredItems.contains { $0.id == plainItem.id })
+    #expect(!store.filteredItems.contains { $0.id == vsCodeItem.id })
 }
 
 @Test @MainActor func testPasteServicePlainTextOnly() {
