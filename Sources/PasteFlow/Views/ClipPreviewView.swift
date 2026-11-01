@@ -2,21 +2,31 @@ import SwiftUI
 import AppKit
 
 public struct ClipPreviewView: View {
+    private enum HTMLPreviewMode: String, CaseIterable {
+        case text = "Text"
+        case rawHTML = "Raw HTML"
+    }
+
     public let item: ClipItem?
     public let onPaste: () -> Void
+    public let onPastePlain: () -> Void
     public let onCopy: () -> Void
     public let onTogglePin: () -> Void
     public let onDelete: () -> Void
 
+    @State private var previewMode: HTMLPreviewMode = .text
+
     public init(
         item: ClipItem?,
         onPaste: @escaping () -> Void,
+        onPastePlain: @escaping () -> Void,
         onCopy: @escaping () -> Void,
         onTogglePin: @escaping () -> Void,
         onDelete: @escaping () -> Void
     ) {
         self.item = item
         self.onPaste = onPaste
+        self.onPastePlain = onPastePlain
         self.onCopy = onCopy
         self.onTogglePin = onTogglePin
         self.onDelete = onDelete
@@ -80,6 +90,18 @@ public struct ClipPreviewView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
+
+                if item.hasRichText {
+                    Text(item.hasHTML ? "HTML" : "RTF")
+                        .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule()
+                                .fill(Color.accentColor.opacity(0.15))
+                        )
+                        .foregroundColor(.accentColor)
+                }
             }
 
             Spacer()
@@ -125,12 +147,36 @@ public struct ClipPreviewView: View {
 
     private func textPreviewBody(item: ClipItem) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(item.plainText ?? "")
-                .font(.system(size: 12, design: isCodeLike(item.plainText) ? .monospaced : .default))
-                .foregroundColor(.primary)
-                .textSelection(.enabled)
-                .lineSpacing(3)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if item.hasHTML {
+                HStack {
+                    Picker("", selection: $previewMode) {
+                        ForEach(HTMLPreviewMode.allCases, id: \.self) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 170)
+
+                    Spacer()
+                }
+                .padding(.bottom, 2)
+            }
+
+            if item.hasHTML && previewMode == .rawHTML {
+                Text(item.htmlContent ?? "")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.primary)
+                    .textSelection(.enabled)
+                    .lineSpacing(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text(item.plainText ?? "")
+                    .font(.system(size: 12, design: isCodeLike(item.plainText) ? .monospaced : .default))
+                    .foregroundColor(.primary)
+                    .textSelection(.enabled)
+                    .lineSpacing(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 
@@ -292,6 +338,20 @@ public struct ClipPreviewView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .help("Copy (⌘C)")
+
+                if item.hasRichText {
+                    Button(action: onPastePlain) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "text.alignleft")
+                                .font(.system(size: 10))
+                            Text("Plain")
+                                .font(.system(size: 11))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Paste as plain text (⇧↵)")
+                }
 
                 Button(action: onPaste) {
                     HStack(spacing: 4) {

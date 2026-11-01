@@ -78,6 +78,7 @@ If you've used legacy macOS clipboard managers like **Clipy**, you know the fric
   - **URLs & Links**: Highlights domains with a 1-click "Open in Browser" action.
   - **Images & Screenshots**: Displays aspect-ratio thumbnails with exact pixel dimensions and file size.
   - **File URLs**: Prioritizes actual file paths over Finder icon representations.
+  - **HTML & Rich Text**: Identifies formatted clips from Slack, Confluence, and web browsers. Switch between **Text** and **Raw HTML** preview, and choose formatted or plain text paste.
   - **Code & Text**: Clean monospace preview with line and character counts.
 - **🛡 Privacy & Safety**:
   - Automatically ignores concealed password items from **1Password**, **LastPass**, **Bitwarden**, and **macOS Keychain**.
@@ -95,11 +96,14 @@ If you've used legacy macOS clipboard managers like **Clipy**, you know the fric
 | :--- | :--- |
 | **`⌘ + ⇧ + V`** | Toggle PasteFlow popup window |
 | **`↑` / `↓`** | Navigate through clipboard history |
-| **`Enter (↵)`** | Paste item into frontmost application |
+| **`Enter (↵)`** | Paste item into frontmost application (rich formatting preserved) |
+| **`⇧ + Enter`** | Paste as Plain Text (strips HTML / RTF formatting) |
 | **`⌘ + 1` 〜 `⌘ + 9`** | 1-keystroke quick paste for top items |
-| **`Tab` / `⇧ + Tab`** | Switch filter category (`All` ➜ `★ Favs` ➜ `Text` ➜ `Links` ➜ `Images` ➜ `Colors`) |
+| **`⌘ + ⇧ + 1` 〜 `⌘ + ⇧ + 9`** | 1-keystroke quick paste as Plain Text |
+| **`Tab` / `⇧ + Tab`** | Switch filter category (`All` ➜ `★ Favs` ➜ `Text` ➜ `HTML` ➜ `Links` ➜ `Images` ➜ `Colors`) |
 | **`⌘ + F` / `⌘ + P`** | Toggle Favorite status |
-| **`⌘ + C`** | Copy to clipboard (without auto-pasting) |
+| **`⌘ + C`** | Copy to clipboard (formatted) |
+| **`⌘ + ⇧ + C`** | Copy to clipboard as Plain Text |
 | **`⌘ + ⌫`** | Delete item from history |
 | **`Esc`** | Close window / clear search |
 | **Type anything** | Real-time instant search filter |

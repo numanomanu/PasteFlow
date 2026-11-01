@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import AppKit
 @testable import PasteFlow
 
 @Test func testColorDetection() {
@@ -54,4 +55,50 @@ import Foundation
     #expect(store.selectedCategory == .favorites)
     store.selectPreviousCategory()
     #expect(store.selectedCategory == .all)
+}
+
+@Test @MainActor func testHTMLFilterAndProperties() {
+    let plainItem = ClipItem(type: .text, plainText: "Plain text only")
+    let htmlItem = ClipItem(type: .text, plainText: "HTML text", htmlContent: "<b>HTML text</b>")
+    let rtfItem = ClipItem(type: .text, plainText: "RTF text", richTextRTF: "{\\rtf1 test}".data(using: .utf8))
+
+    #expect(plainItem.hasHTML == false)
+    #expect(plainItem.hasRichText == false)
+
+    #expect(htmlItem.hasHTML == true)
+    #expect(htmlItem.hasRichText == true)
+
+    #expect(rtfItem.hasHTML == false)
+    #expect(rtfItem.hasRichText == true)
+
+    let store = HistoryStore()
+    store.items = [plainItem, htmlItem, rtfItem]
+
+    store.selectedCategory = .html
+    #expect(store.filteredItems.count == 2)
+    #expect(store.filteredItems.contains { $0.id == htmlItem.id })
+    #expect(store.filteredItems.contains { $0.id == rtfItem.id })
+    #expect(!store.filteredItems.contains { $0.id == plainItem.id })
+}
+
+@Test @MainActor func testPasteServicePlainTextOnly() {
+    let richItem = ClipItem(
+        type: .text,
+        plainText: "Hello Plain",
+        richTextRTF: "{\\rtf1 Hello RTF}".data(using: .utf8),
+        htmlContent: "<b>Hello HTML</b>"
+    )
+
+    // 1. Plain text only: true
+    PasteService.shared.copyToClipboard(item: richItem, plainTextOnly: true)
+    let pb = NSPasteboard.general
+    #expect(pb.string(forType: .string) == "Hello Plain")
+    #expect(pb.string(forType: .html) == nil)
+    #expect(pb.data(forType: .rtf) == nil)
+
+    // 2. Formatted: false
+    PasteService.shared.copyToClipboard(item: richItem, plainTextOnly: false)
+    #expect(pb.string(forType: .string) == "Hello Plain")
+    #expect(pb.string(forType: .html) == "<b>Hello HTML</b>")
+    #expect(pb.data(forType: .rtf) != nil)
 }

@@ -53,6 +53,18 @@ public struct ClipRowView: View {
                         .foregroundColor(isSelected ? .white.opacity(0.8) : .secondary)
                         .lineLimit(1)
 
+                    if item.hasRichText {
+                        Text(item.hasHTML ? "HTML" : "RTF")
+                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(isSelected ? Color.white.opacity(0.25) : Color.accentColor.opacity(0.12))
+                            )
+                            .foregroundColor(isSelected ? .white : .accentColor)
+                    }
+
                     Spacer()
 
                     Text(item.timeAgo)

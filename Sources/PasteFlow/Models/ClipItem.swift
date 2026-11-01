@@ -109,6 +109,14 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
 
     // MARK: - Computed Properties
 
+    public var hasHTML: Bool {
+        !(htmlContent?.isEmpty ?? true)
+    }
+
+    public var hasRichText: Bool {
+        hasHTML || richTextRTF != nil
+    }
+
     public var title: String {
         switch type {
         case .text, .link, .color:

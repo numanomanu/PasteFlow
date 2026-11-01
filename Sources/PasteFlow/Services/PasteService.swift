@@ -21,9 +21,9 @@ public final class PasteService {
     }
 
     /// Copy item to pasteboard and automatically paste into previous application if permitted
-    public func paste(item: ClipItem, targetApp: NSRunningApplication?) {
+    public func paste(item: ClipItem, targetApp: NSRunningApplication?, plainTextOnly: Bool = false) {
         // 1. Always copy to pasteboard first
-        copyToClipboard(item: item)
+        copyToClipboard(item: item, plainTextOnly: plainTextOnly)
 
         // 2. Reactivate target application if valid and not ourselves
         let myBundleId = Bundle.main.bundleIdentifier
@@ -57,7 +57,7 @@ public final class PasteService {
     }
 
     /// Copy item to pasteboard only without pasting
-    public func copyToClipboard(item: ClipItem) {
+    public func copyToClipboard(item: ClipItem, plainTextOnly: Bool = false) {
         ClipboardMonitor.shared.suppressNextRecording()
 
         let pasteboard = NSPasteboard.general
@@ -68,11 +68,13 @@ public final class PasteService {
             if let text = item.plainText {
                 pasteboard.setString(text, forType: .string)
             }
-            if let rtf = item.richTextRTF {
-                pasteboard.setData(rtf, forType: .rtf)
-            }
-            if let html = item.htmlContent {
-                pasteboard.setString(html, forType: .html)
+            if !plainTextOnly {
+                if let rtf = item.richTextRTF {
+                    pasteboard.setData(rtf, forType: .rtf)
+                }
+                if let html = item.htmlContent {
+                    pasteboard.setString(html, forType: .html)
+                }
             }
 
         case .image:

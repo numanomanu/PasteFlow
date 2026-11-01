@@ -52,10 +52,13 @@ public struct MainPopupView: View {
                 ClipPreviewView(
                     item: store.selectedItem,
                     onPaste: {
-                        windowManager.pasteSelectedAndHide()
+                        windowManager.pasteSelectedAndHide(plainTextOnly: false)
+                    },
+                    onPastePlain: {
+                        windowManager.pasteSelectedAndHide(plainTextOnly: true)
                     },
                     onCopy: {
-                        windowManager.copySelectedAndHide()
+                        windowManager.copySelectedAndHide(plainTextOnly: false)
                     },
                     onTogglePin: {
                         if let item = store.selectedItem {
@@ -141,6 +144,7 @@ public struct MainPopupView: View {
     private var bottomShortcutBar: some View {
         HStack(spacing: 12) {
             shortcutHint(key: "↵", label: "Paste")
+            shortcutHint(key: "⇧↵", label: "Plain")
             shortcutHint(key: "Tab", label: "Filter")
             shortcutHint(key: "⌘1-9", label: "Quick")
             shortcutHint(key: "⌘F", label: "Fav")

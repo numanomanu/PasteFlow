@@ -103,29 +103,29 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
         // Do NOT call NSApp.hide(nil); orderOut(nil) allows macOS to smoothly maintain previousApp focus.
     }
 
-    public func pasteSelectedAndHide() {
+    public func pasteSelectedAndHide(plainTextOnly: Bool = false) {
         guard let item = HistoryStore.shared.selectedItem else {
             hide()
             return
         }
         let targetApp = previousApp
         hide()
-        PasteService.shared.paste(item: item, targetApp: targetApp)
+        PasteService.shared.paste(item: item, targetApp: targetApp, plainTextOnly: plainTextOnly)
     }
 
-    public func copySelectedAndHide() {
+    public func copySelectedAndHide(plainTextOnly: Bool = false) {
         guard let item = HistoryStore.shared.selectedItem else {
             hide()
             return
         }
         hide()
-        PasteService.shared.copyToClipboard(item: item)
+        PasteService.shared.copyToClipboard(item: item, plainTextOnly: plainTextOnly)
     }
 
-    public func pasteItemAndHide(_ item: ClipItem) {
+    public func pasteItemAndHide(_ item: ClipItem, plainTextOnly: Bool = false) {
         let targetApp = previousApp
         hide()
-        PasteService.shared.paste(item: item, targetApp: targetApp)
+        PasteService.shared.paste(item: item, targetApp: targetApp, plainTextOnly: plainTextOnly)
     }
 
     // MARK: - KeyEventHandler
@@ -156,20 +156,22 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
 
         let hasNavigationModifiers = flags.contains(.command) || flags.contains(.option) || flags.contains(.control)
 
-        // Return / Enter (key code 36: Return, key code 76: Keypad Enter) without modifiers
+        // Return / Enter (key code 36: Return, key code 76: Keypad Enter)
+        // Normal Enter -> Rich paste; Shift + Enter -> Plain text paste
         if (event.keyCode == 36 || event.keyCode == 76) && !hasNavigationModifiers {
-            pasteSelectedAndHide()
+            let isShift = flags.contains(.shift)
+            pasteSelectedAndHide(plainTextOnly: isShift)
             return true
         }
 
         // Up arrow (key code 126) without modifiers
-        if event.keyCode == 126 && !hasNavigationModifiers {
+        if event.keyCode == 126 && !hasNavigationModifiers && !flags.contains(.shift) {
             store.selectPrevious()
             return true
         }
 
         // Down arrow (key code 125) without modifiers
-        if event.keyCode == 125 && !hasNavigationModifiers {
+        if event.keyCode == 125 && !hasNavigationModifiers && !flags.contains(.shift) {
             store.selectNext()
             return true
         }
@@ -187,19 +189,20 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
             return true
         }
 
-        // Cmd + 1 ~ Cmd + 9 for direct pasting top items
+        // Cmd + 1 ~ Cmd + 9 for direct pasting top items (Cmd + Shift + 1-9 for plain text)
         if flags.contains(.command) {
+            let isShift = flags.contains(.shift)
             let numberKeyCodes: [UInt16] = [18, 19, 20, 21, 23, 22, 26, 28, 25]
             if let index = numberKeyCodes.firstIndex(of: event.keyCode) {
                 if let item = store.selectIndex(index) {
-                    pasteItemAndHide(item)
+                    pasteItemAndHide(item, plainTextOnly: isShift)
                     return true
                 }
             }
 
-            // Cmd + C: Copy without pasting
+            // Cmd + C or Cmd + Shift + C: Copy without pasting
             if event.charactersIgnoringModifiers == "c" {
-                copySelectedAndHide()
+                copySelectedAndHide(plainTextOnly: isShift)
                 return true
             }
 

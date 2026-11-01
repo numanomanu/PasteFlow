@@ -129,8 +129,25 @@ public final class ClipboardMonitor: ObservableObject {
                 clipType = .link
             }
 
-            let rtfData = pasteboard.data(forType: .rtf)
-            let html = pasteboard.string(forType: .html)
+            // Retrieve RTF & HTML data with fallbacks (Slack, Confluence, Chrome, Safari)
+            var rtfData = pasteboard.data(forType: .rtf)
+            if rtfData == nil {
+                rtfData = pasteboard.data(forType: NSPasteboard.PasteboardType("public.rtf"))
+            }
+
+            var html = pasteboard.string(forType: .html)
+            if (html == nil || html?.isEmpty == true), let htmlData = pasteboard.data(forType: .html) {
+                html = String(data: htmlData, encoding: .utf8) ?? String(data: htmlData, encoding: .ascii)
+            }
+
+            // Memory guard: skip rich data if larger than 500 KB to avoid excessive memory consumption
+            let maxRichBytes = 500_000
+            if let rtf = rtfData, rtf.count > maxRichBytes {
+                rtfData = nil
+            }
+            if let h = html, h.utf8.count > maxRichBytes {
+                html = nil
+            }
 
             let item = ClipItem(
                 type: clipType,

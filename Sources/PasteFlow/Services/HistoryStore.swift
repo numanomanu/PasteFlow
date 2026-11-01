@@ -6,6 +6,7 @@ public enum FilterCategory: String, CaseIterable, Identifiable {
     case all = "All"
     case favorites = "Favorites"
     case text = "Text"
+    case html = "HTML"
     case link = "Links"
     case image = "Images"
     case color = "Colors"
@@ -17,6 +18,7 @@ public enum FilterCategory: String, CaseIterable, Identifiable {
         case .all: return "square.grid.2x2"
         case .favorites: return "star.fill"
         case .text: return "text.alignleft"
+        case .html: return "chevron.left.forwardslash.chevron.right"
         case .link: return "link"
         case .image: return "photo"
         case .color: return "paintpalette"
@@ -106,6 +108,8 @@ public final class HistoryStore: ObservableObject {
             result = result.filter { $0.isFavorite }
         case .text:
             result = result.filter { $0.type == .text }
+        case .html:
+            result = result.filter { $0.hasRichText }
         case .link:
             result = result.filter { $0.type == .link }
         case .image:

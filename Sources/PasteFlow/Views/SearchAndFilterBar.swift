@@ -57,12 +57,12 @@ public struct SearchAndFilterBar: View {
                             HStack(spacing: 4) {
                                 Image(systemName: category.iconName)
                                     .font(.system(size: category == .all ? 10 : 11, weight: .semibold))
-                                if category == .all {
-                                    Text("All")
+                                if category == .all || category == .html || store.selectedCategory == category {
+                                    Text(category.rawValue)
                                         .font(.system(size: 11, weight: store.selectedCategory == category ? .semibold : .regular))
                                 }
                             }
-                            .padding(.horizontal, category == .all ? 10 : 8)
+                            .padding(.horizontal, (category == .all || category == .html || store.selectedCategory == category) ? 10 : 8)
                             .padding(.vertical, 4)
                             .background(
                                 Capsule()
