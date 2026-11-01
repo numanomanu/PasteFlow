@@ -25,7 +25,7 @@ public struct ClipPreviewView: View {
     public var body: some View {
         if let item = item {
             VStack(spacing: 0) {
-                // Header meta: Type, App, Pin toggle
+                // Header: Type, App, Favorite
                 previewHeader(for: item)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
@@ -50,12 +50,12 @@ public struct ClipPreviewView: View {
             }
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.3))
         } else {
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 Image(systemName: "doc.on.clipboard")
-                    .font(.system(size: 36))
-                    .foregroundColor(.secondary.opacity(0.5))
-                Text("履歴を選択してください")
-                    .font(.system(size: 13))
+                    .font(.system(size: 32, weight: .light))
+                    .foregroundColor(.secondary.opacity(0.4))
+                Text("Select an item")
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -69,6 +69,7 @@ public struct ClipPreviewView: View {
             HStack(spacing: 6) {
                 Image(systemName: item.type.iconName)
                     .foregroundColor(item.type.tintColor)
+                    .font(.system(size: 13))
                 Text(item.type.displayName)
                     .font(.system(size: 12, weight: .semibold))
 
@@ -86,8 +87,9 @@ public struct ClipPreviewView: View {
             Button(action: onTogglePin) {
                 HStack(spacing: 4) {
                     Image(systemName: item.isFavorite ? "star.fill" : "star")
-                    Text(item.isFavorite ? "お気に入り中" : "お気に入り")
                         .font(.system(size: 11))
+                    Text(item.isFavorite ? "Favorited" : "Favorite")
+                        .font(.system(size: 11, weight: .medium))
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
@@ -98,6 +100,7 @@ public struct ClipPreviewView: View {
                 .foregroundColor(item.isFavorite ? .orange : .secondary)
             }
             .buttonStyle(.plain)
+            .help("Toggle Favorite (⌘F or ⌘P)")
         }
     }
 
@@ -138,7 +141,7 @@ public struct ClipPreviewView: View {
                     .font(.system(size: 20))
                     .foregroundColor(.cyan)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Web リンク")
+                    Text("Web Link")
                         .font(.system(size: 12, weight: .semibold))
                     if let urlString = item.plainText, let url = URL(string: urlString), let host = url.host {
                         Text(host)
@@ -149,8 +152,14 @@ public struct ClipPreviewView: View {
                 Spacer()
 
                 if let urlString = item.plainText, let url = URL(string: urlString) {
-                    Button("ブラウザで開く") {
+                    Button(action: {
                         NSWorkspace.shared.open(url)
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("Open")
+                        }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
@@ -211,6 +220,7 @@ public struct ClipPreviewView: View {
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
+            .help("Copy")
         }
     }
 
@@ -233,7 +243,7 @@ public struct ClipPreviewView: View {
                     }
                 }
             } else {
-                Text("画像を読み込めません")
+                Text("Unable to load image")
                     .foregroundColor(.secondary)
             }
         }
@@ -247,9 +257,9 @@ public struct ClipPreviewView: View {
             // Stats (chars, lines)
             HStack(spacing: 8) {
                 if item.type == .text {
-                    Text("\(item.charCount) 文字")
+                    Text("\(item.charCount) chars")
                     Text("•")
-                    Text("\(item.lineCount) 行")
+                    Text("\(item.lineCount) lines")
                 } else {
                     Text(item.timeAgo)
                 }
@@ -267,21 +277,31 @@ public struct ClipPreviewView: View {
                         .foregroundColor(.red.opacity(0.8))
                 }
                 .buttonStyle(.plain)
-                .help("削除 (Cmd+Delete)")
+                .help("Delete (⌘⌫)")
 
                 Button(action: onCopy) {
-                    Text("コピー")
-                        .font(.system(size: 11))
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 10))
+                        Text("Copy")
+                            .font(.system(size: 11))
+                    }
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .help("Copy (⌘C)")
 
                 Button(action: onPaste) {
-                    Text("貼り付け ↵")
-                        .font(.system(size: 11, weight: .semibold))
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.turn.down.left")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("Paste")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
+                .help("Paste into active app (↵)")
             }
         }
     }

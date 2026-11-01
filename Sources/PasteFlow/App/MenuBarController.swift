@@ -41,7 +41,7 @@ public final class MenuBarController: NSObject, NSMenuDelegate {
 
         // 1. Open PasteFlow
         let openItem = NSMenuItem(
-            title: "PasteFlow を開く",
+            title: "Open PasteFlow",
             action: #selector(openPasteFlow),
             keyEquivalent: "v"
         )
@@ -54,7 +54,7 @@ public final class MenuBarController: NSObject, NSMenuDelegate {
         // 2. Recent 5 items quick glance
         let recentItems = Array(HistoryStore.shared.items.prefix(5))
         if !recentItems.isEmpty {
-            let sectionHeader = NSMenuItem(title: "直近の履歴", action: nil, keyEquivalent: "")
+            let sectionHeader = NSMenuItem(title: "Recent History", action: nil, keyEquivalent: "")
             sectionHeader.isEnabled = false
             menu.addItem(sectionHeader)
 
@@ -75,9 +75,18 @@ public final class MenuBarController: NSObject, NSMenuDelegate {
             menu.addItem(NSMenuItem.separator())
         }
 
-        // 3. Clear History
+        // 3. Preferences
+        let prefsItem = NSMenuItem(
+            title: "Preferences...",
+            action: #selector(openPreferences),
+            keyEquivalent: ","
+        )
+        prefsItem.target = self
+        menu.addItem(prefsItem)
+
+        // 4. Clear History
         let clearItem = NSMenuItem(
-            title: "履歴をクリア (お気に入り保持)",
+            title: "Clear History (Keep Favorites)",
             action: #selector(clearHistory),
             keyEquivalent: ""
         )
@@ -86,9 +95,9 @@ public final class MenuBarController: NSObject, NSMenuDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        // 4. Quit
+        // 5. Quit
         let quitItem = NSMenuItem(
-            title: "PasteFlow を終了",
+            title: "Quit PasteFlow",
             action: #selector(quitApp),
             keyEquivalent: "q"
         )
@@ -98,6 +107,11 @@ public final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func openPasteFlow() {
         WindowManager.shared.toggle()
+    }
+
+    @objc private func openPreferences() {
+        WindowManager.shared.show()
+        WindowManager.shared.showingPreferences = true
     }
 
     @objc private func recentItemClicked(_ sender: NSMenuItem) {

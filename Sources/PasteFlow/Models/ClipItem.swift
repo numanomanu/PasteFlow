@@ -112,26 +112,26 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
     public var title: String {
         switch type {
         case .text, .link, .color:
-            guard let text = plainText, !text.isEmpty else { return "（空のテキスト）" }
+            guard let text = plainText, !text.isEmpty else { return "(Empty text)" }
             let lines = text.components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
-            return lines.first ?? "（空のテキスト）"
+            return lines.first ?? "(Empty text)"
 
         case .image:
             if let w = imageWidth, let h = imageHeight {
-                return "画像 (\(Int(w)) × \(Int(h)))"
+                return "Image (\(Int(w)) × \(Int(h)))"
             }
-            return "画像"
+            return "Image"
 
         case .file:
             if let urls = fileURLs, let first = urls.first, let url = URL(string: first) {
                 if urls.count > 1 {
-                    return "\(url.lastPathComponent) ほか \(urls.count - 1) 件"
+                    return "\(url.lastPathComponent) +\(urls.count - 1)"
                 }
                 return url.lastPathComponent
             }
-            return "ファイル"
+            return "File"
         }
     }
 
@@ -145,7 +145,7 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
             if lines.count > 1 {
                 return lines[1]
             }
-            return "\(text.count) 文字"
+            return "\(text.count) chars"
 
         case .link:
             return plainText ?? ""
@@ -157,7 +157,7 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
             if let w = imageWidth, let h = imageHeight {
                 return "\(Int(w)) × \(Int(h)) px"
             }
-            return "PNG 画像"
+            return "PNG Image"
 
         case .file:
             guard let urls = fileURLs, let first = urls.first, let url = URL(string: first) else { return "" }
@@ -178,19 +178,19 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
         let now = Date()
         let interval = now.timeIntervalSince(timestamp)
         if interval < 60 {
-            return "たった今"
+            return "Just now"
         } else if interval < 3600 {
             let minutes = Int(interval / 60)
-            return "\(minutes)分前"
+            return "\(minutes)m ago"
         } else if interval < 86400 {
             let hours = Int(interval / 3600)
-            return "\(hours)時間前"
+            return "\(hours)h ago"
         } else if interval < 86400 * 7 {
             let days = Int(interval / 86400)
-            return "\(days)日前"
+            return "\(days)d ago"
         } else {
             let formatter = DateFormatter()
-            formatter.dateFormat = "MM/dd"
+            formatter.dateFormat = "MMM d"
             return formatter.string(from: timestamp)
         }
     }

@@ -127,9 +127,9 @@ public struct MainPopupView: View {
     private var emptyStateView: some View {
         VStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 24))
-                .foregroundColor(.secondary.opacity(0.6))
-            Text("該当する履歴がありません")
+                .font(.system(size: 22))
+                .foregroundColor(.secondary.opacity(0.5))
+            Text("No history found")
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
         }
@@ -139,18 +139,18 @@ public struct MainPopupView: View {
     // MARK: - Bottom Shortcut Bar
 
     private var bottomShortcutBar: some View {
-        HStack(spacing: 14) {
-            shortcutHint(key: "↵", label: "貼付")
-            shortcutHint(key: "Tab", label: "フィルタ")
-            shortcutHint(key: "⌘1-9", label: "即貼付")
-            shortcutHint(key: "⌘C", label: "コピー")
-            shortcutHint(key: "⌘P", label: "お気に入り")
-            shortcutHint(key: "⌘⌫", label: "削除")
-            shortcutHint(key: "Esc", label: "閉じる")
+        HStack(spacing: 12) {
+            shortcutHint(key: "↵", label: "Paste")
+            shortcutHint(key: "Tab", label: "Filter")
+            shortcutHint(key: "⌘1-9", label: "Quick")
+            shortcutHint(key: "⌘F", label: "Fav")
+            shortcutHint(key: "⌘C", label: "Copy")
+            shortcutHint(key: "⌘⌫", label: "Del")
+            shortcutHint(key: "Esc", label: "Close")
 
             Spacer()
 
-            Text("\(store.filteredItems.count) 件")
+            Text("\(store.filteredItems.count) items")
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
 
@@ -164,7 +164,7 @@ public struct MainPopupView: View {
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
-            .help("設定")
+            .help("Preferences")
         }
     }
 

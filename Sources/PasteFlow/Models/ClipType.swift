@@ -12,11 +12,11 @@ public enum ClipType: String, Codable, CaseIterable, Identifiable, Sendable {
     
     public var displayName: String {
         switch self {
-        case .text: return "テキスト"
-        case .link: return "リンク"
-        case .color: return "カラー"
-        case .image: return "画像"
-        case .file: return "ファイル"
+        case .text: return "Text"
+        case .link: return "Link"
+        case .color: return "Color"
+        case .image: return "Image"
+        case .file: return "File"
         }
     }
     

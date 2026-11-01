@@ -3,12 +3,12 @@ import SwiftUI
 import Combine
 
 public enum FilterCategory: String, CaseIterable, Identifiable {
-    case all = "すべて"
-    case favorites = "お気に入り"
-    case text = "テキスト"
-    case link = "リンク"
-    case image = "画像"
-    case color = "カラー"
+    case all = "All"
+    case favorites = "Favorites"
+    case text = "Text"
+    case link = "Links"
+    case image = "Images"
+    case color = "Colors"
     
     public var id: String { rawValue }
     
@@ -374,7 +374,7 @@ public final class HistoryStore: ObservableObject {
             ClipItem(
                 timestamp: Date().addingTimeInterval(-120),
                 type: .text,
-                plainText: "PasteFlow は Clipy より洗練された、キーボードファーストのクリップボードマネージャーです。\nCmd + Shift + V でいつでも呼び出せます。",
+                plainText: "PasteFlow ⚡️ — Blazing-fast, folder-free clipboard manager for macOS.\nPress ⌘ + ⇧ + V to invoke anywhere.",
                 isFavorite: true,
                 sourceAppName: "Safari"
             ),
@@ -396,7 +396,7 @@ public final class HistoryStore: ObservableObject {
             ClipItem(
                 timestamp: Date().addingTimeInterval(-1800),
                 type: .text,
-                plainText: "git commit -m \"feat: refine clipboard experience with PasteFlow\"",
+                plainText: "git commit -m \"feat: keyboard-first clipboard workflow\"",
                 isFavorite: false,
                 sourceAppName: "Terminal"
             )

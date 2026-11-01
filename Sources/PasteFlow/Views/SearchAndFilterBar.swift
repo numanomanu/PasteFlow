@@ -16,7 +16,7 @@ public struct SearchAndFilterBar: View {
                     .font(.system(size: 15, weight: .medium))
                     .foregroundColor(.secondary)
 
-                TextField("履歴を検索... (↑↓で選択, ↵で貼り付け)", text: $store.searchText)
+                TextField("Search clipboard...", text: $store.searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 14))
                     .focused($isSearchFocused)

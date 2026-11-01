@@ -56,7 +56,7 @@ cat <<EOF > "${CONTENTS_DIR}/Info.plist"
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
     <key>NSAppleEventsUsageDescription</key>
-    <string>クリップボードの自動貼り付けを行うためにアクセシビリティキーイベントを使用します。</string>
+    <string>PasteFlow uses accessibility key events to automatically paste selected clipboard items into your active application.</string>
 </dict>
 </plist>
 EOF
