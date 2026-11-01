@@ -75,8 +75,8 @@ public struct PreferencesView: View {
                     }
 
                     HStack {
-                        Button("ピン留めを残して履歴を消去") {
-                            store.clearHistory(keepPinned: true)
+                        Button("お気に入りを残して履歴を消去") {
+                            store.clearHistory(keepFavorites: true)
                         }
                         .foregroundColor(.orange)
 
@@ -137,7 +137,7 @@ public struct PreferencesView: View {
                         guideRow(key: "Enter (↵)", desc: "選択した履歴をペースト")
                         guideRow(key: "⌘ + 1 ~ 9", desc: "1〜9番目の履歴を即座にペースト")
                         guideRow(key: "⌘ + C", desc: "履歴をクリップボードにコピー (貼付なし)")
-                        guideRow(key: "⌘ + P", desc: "選択アイテムをピン留め / 解除")
+                        guideRow(key: "⌘ + P / ⌘ + F", desc: "選択アイテムをお気に入り登録 / 解除")
                         guideRow(key: "⌘ + ⌫", desc: "選択アイテムを履歴から削除")
                         guideRow(key: "Esc", desc: "ポップアップを閉じる")
                     }
@@ -154,12 +154,12 @@ public struct PreferencesView: View {
             isPresented: $showClearConfirmation,
             titleVisibility: .visible
         ) {
-            Button("ピン留めも含めてすべて消去", role: .destructive) {
-                store.clearHistory(keepPinned: false)
+            Button("お気に入りも含めてすべて消去", role: .destructive) {
+                store.clearHistory(keepFavorites: false)
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
-            Text("ピン留めされた重要なアイテムを含む、すべてのクリップボード履歴が削除されます。この操作は取り消せません。")
+            Text("お気に入りに登録された重要なアイテムを含む、すべてのクリップボード履歴が削除されます。この操作は取り消せません。")
         }
         .onAppear {
             isAccessibilityGranted = PasteService.shared.isAccessibilityTrusted

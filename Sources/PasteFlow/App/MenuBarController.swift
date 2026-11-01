@@ -77,7 +77,7 @@ public final class MenuBarController: NSObject, NSMenuDelegate {
 
         // 3. Clear History
         let clearItem = NSMenuItem(
-            title: "履歴をクリア (ピン留め保持)",
+            title: "履歴をクリア (お気に入り保持)",
             action: #selector(clearHistory),
             keyEquivalent: ""
         )

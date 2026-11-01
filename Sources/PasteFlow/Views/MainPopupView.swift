@@ -144,7 +144,7 @@ public struct MainPopupView: View {
             shortcutHint(key: "Tab", label: "フィルタ")
             shortcutHint(key: "⌘1-9", label: "即貼付")
             shortcutHint(key: "⌘C", label: "コピー")
-            shortcutHint(key: "⌘P", label: "ピン")
+            shortcutHint(key: "⌘P", label: "お気に入り")
             shortcutHint(key: "⌘⌫", label: "削除")
             shortcutHint(key: "Esc", label: "閉じる")
 

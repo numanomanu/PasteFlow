@@ -85,17 +85,17 @@ public struct ClipPreviewView: View {
 
             Button(action: onTogglePin) {
                 HStack(spacing: 4) {
-                    Image(systemName: item.isPinned ? "pin.fill" : "pin")
-                    Text(item.isPinned ? "ピン留め中" : "ピン留め")
+                    Image(systemName: item.isFavorite ? "star.fill" : "star")
+                    Text(item.isFavorite ? "お気に入り中" : "お気に入り")
                         .font(.system(size: 11))
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
                 .background(
                     Capsule()
-                        .fill(item.isPinned ? Color.orange.opacity(0.15) : Color.primary.opacity(0.06))
+                        .fill(item.isFavorite ? Color.yellow.opacity(0.18) : Color.primary.opacity(0.06))
                 )
-                .foregroundColor(item.isPinned ? .orange : .secondary)
+                .foregroundColor(item.isFavorite ? .orange : .secondary)
             }
             .buttonStyle(.plain)
         }

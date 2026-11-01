@@ -45,6 +45,9 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
     public func show() {
         guard let panel = panel else { return }
 
+        // Always reset to main list view when opening
+        showingPreferences = false
+
         // Track frontmost app before showing so we can restore focus and paste into it
         let frontApp = NSWorkspace.shared.frontmostApplication
         if frontApp?.bundleIdentifier != Bundle.main.bundleIdentifier {
@@ -107,13 +110,9 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
     public func handleKeyDown(event: NSEvent) -> Bool {
         let store = HistoryStore.shared
 
-        // ESC key (key code 53)
+        // ESC key (key code 53): Always close the window immediately
         if event.keyCode == 53 {
-            if showingPreferences {
-                showingPreferences = false
-            } else {
-                hide()
-            }
+            hide()
             return true
         }
 
@@ -172,10 +171,10 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
                 return true
             }
 
-            // Cmd + P: Toggle Pin
-            if event.charactersIgnoringModifiers == "p" {
+            // Cmd + P or Cmd + F: Toggle Favorite
+            if event.charactersIgnoringModifiers == "p" || event.charactersIgnoringModifiers == "f" {
                 if let item = store.selectedItem {
-                    store.togglePin(id: item.id)
+                    store.toggleFavorite(id: item.id)
                     return true
                 }
             }

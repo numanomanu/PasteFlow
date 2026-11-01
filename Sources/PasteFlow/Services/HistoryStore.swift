@@ -4,7 +4,7 @@ import Combine
 
 public enum FilterCategory: String, CaseIterable, Identifiable {
     case all = "すべて"
-    case pinned = "ピン留め"
+    case favorites = "お気に入り"
     case text = "テキスト"
     case link = "リンク"
     case image = "画像"
@@ -15,7 +15,7 @@ public enum FilterCategory: String, CaseIterable, Identifiable {
     public var iconName: String {
         switch self {
         case .all: return "square.grid.2x2"
-        case .pinned: return "pin.fill"
+        case .favorites: return "star.fill"
         case .text: return "text.alignleft"
         case .link: return "link"
         case .image: return "photo"
@@ -83,8 +83,8 @@ public final class HistoryStore: ObservableObject {
         switch selectedCategory {
         case .all:
             break
-        case .pinned:
-            result = result.filter { $0.isPinned }
+        case .favorites:
+            result = result.filter { $0.isFavorite }
         case .text:
             result = result.filter { $0.type == .text }
         case .link:
@@ -111,13 +111,7 @@ public final class HistoryStore: ObservableObject {
             }
         }
         
-        // Pinned items come first when viewing "all", or keep chronological
-        if selectedCategory == .all {
-            let pinned = result.filter { $0.isPinned }
-            let unpinned = result.filter { !$0.isPinned }
-            return pinned + unpinned
-        }
-        
+        // Keep pure chronological order for All (no favorite hijacking)
         return result
     }
     
@@ -158,10 +152,14 @@ public final class HistoryStore: ObservableObject {
         scheduleSave()
     }
     
-    public func togglePin(id: UUID) {
+    public func toggleFavorite(id: UUID) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        items[index].isPinned.toggle()
+        items[index].isFavorite.toggle()
         scheduleSave()
+    }
+
+    public func togglePin(id: UUID) {
+        toggleFavorite(id: id)
     }
     
     public func delete(id: UUID) {
@@ -182,19 +180,23 @@ public final class HistoryStore: ObservableObject {
         scheduleSave()
     }
     
-    public func clearHistory(keepPinned: Bool = true) {
-        if keepPinned {
-            let deletedImages = items.filter { !$0.isPinned }.compactMap { $0.imageFileName }
+    public func clearHistory(keepFavorites: Bool = true) {
+        if keepFavorites {
+            let deletedImages = items.filter { !$0.isFavorite }.compactMap { $0.imageFileName }
             for img in deletedImages {
                 try? fileManager.removeItem(at: imagesDirectory.appendingPathComponent(img))
             }
-            items.removeAll { !$0.isPinned }
+            items.removeAll { !$0.isFavorite }
         } else {
             try? fileManager.removeItem(at: imagesDirectory)
             items.removeAll()
         }
         selectedItemId = items.first?.id
         scheduleSave()
+    }
+
+    public func clearHistory(keepPinned: Bool) {
+        clearHistory(keepFavorites: keepPinned)
     }
     
     // MARK: - Selection Navigation
@@ -319,17 +321,17 @@ public final class HistoryStore: ObservableObject {
     }
     
     private func trimHistory() {
-        let pinned = items.filter { $0.isPinned }
-        var unpinned = items.filter { !$0.isPinned }
-        if unpinned.count > maxHistoryCount {
-            let overflow = unpinned.suffix(from: maxHistoryCount)
+        let favorites = items.filter { $0.isFavorite }
+        var regular = items.filter { !$0.isFavorite }
+        if regular.count > maxHistoryCount {
+            let overflow = regular.suffix(from: maxHistoryCount)
             for item in overflow {
                 if let imageFile = item.imageFileName {
                     try? fileManager.removeItem(at: imagesDirectory.appendingPathComponent(imageFile))
                 }
             }
-            unpinned = Array(unpinned.prefix(maxHistoryCount))
-            items = pinned + unpinned
+            regular = Array(regular.prefix(maxHistoryCount))
+            items = favorites + regular
             items.sort { $0.timestamp > $1.timestamp }
         }
     }
@@ -373,21 +375,21 @@ public final class HistoryStore: ObservableObject {
                 timestamp: Date().addingTimeInterval(-120),
                 type: .text,
                 plainText: "PasteFlow は Clipy より洗練された、キーボードファーストのクリップボードマネージャーです。\nCmd + Shift + V でいつでも呼び出せます。",
-                isPinned: true,
+                isFavorite: true,
                 sourceAppName: "Safari"
             ),
             ClipItem(
                 timestamp: Date().addingTimeInterval(-300),
                 type: .link,
                 plainText: "https://github.com",
-                isPinned: false,
+                isFavorite: false,
                 sourceAppName: "Google Chrome"
             ),
             ClipItem(
                 timestamp: Date().addingTimeInterval(-600),
                 type: .color,
                 plainText: "#007AFF",
-                isPinned: false,
+                isFavorite: false,
                 sourceAppName: "Xcode",
                 colorHex: "#007AFF"
             ),
@@ -395,7 +397,7 @@ public final class HistoryStore: ObservableObject {
                 timestamp: Date().addingTimeInterval(-1800),
                 type: .text,
                 plainText: "git commit -m \"feat: refine clipboard experience with PasteFlow\"",
-                isPinned: false,
+                isFavorite: false,
                 sourceAppName: "Terminal"
             )
         ]

@@ -13,10 +13,16 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
     public var imageWidth: Double?
     public var imageHeight: Double?
     public var fileURLs: [String]?
-    public var isPinned: Bool
+    public var isFavorite: Bool
     public var sourceAppName: String?
     public var sourceAppBundleId: String?
     public var colorHex: String?
+
+    // Backwards compatibility for isPinned
+    public var isPinned: Bool {
+        get { isFavorite }
+        set { isFavorite = newValue }
+    }
 
     public init(
         id: UUID = UUID(),
@@ -29,7 +35,7 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
         imageWidth: Double? = nil,
         imageHeight: Double? = nil,
         fileURLs: [String]? = nil,
-        isPinned: Bool = false,
+        isFavorite: Bool = false,
         sourceAppName: String? = nil,
         sourceAppBundleId: String? = nil,
         colorHex: String? = nil
@@ -44,10 +50,61 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
         self.imageWidth = imageWidth
         self.imageHeight = imageHeight
         self.fileURLs = fileURLs
-        self.isPinned = isPinned
+        self.isFavorite = isFavorite
         self.sourceAppName = sourceAppName
         self.sourceAppBundleId = sourceAppBundleId
         self.colorHex = colorHex
+    }
+
+    // Custom Decodable to support both isFavorite and legacy isPinned
+    enum CodingKeys: String, CodingKey {
+        case id, timestamp, type, plainText, richTextRTF, htmlContent
+        case imageFileName, imageWidth, imageHeight, fileURLs
+        case isFavorite, isPinned, sourceAppName, sourceAppBundleId, colorHex
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.timestamp = try container.decode(Date.self, forKey: .timestamp)
+        self.type = try container.decode(ClipType.self, forKey: .type)
+        self.plainText = try container.decodeIfPresent(String.self, forKey: .plainText)
+        self.richTextRTF = try container.decodeIfPresent(Data.self, forKey: .richTextRTF)
+        self.htmlContent = try container.decodeIfPresent(String.self, forKey: .htmlContent)
+        self.imageFileName = try container.decodeIfPresent(String.self, forKey: .imageFileName)
+        self.imageWidth = try container.decodeIfPresent(Double.self, forKey: .imageWidth)
+        self.imageHeight = try container.decodeIfPresent(Double.self, forKey: .imageHeight)
+        self.fileURLs = try container.decodeIfPresent([String].self, forKey: .fileURLs)
+        self.sourceAppName = try container.decodeIfPresent(String.self, forKey: .sourceAppName)
+        self.sourceAppBundleId = try container.decodeIfPresent(String.self, forKey: .sourceAppBundleId)
+        self.colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex)
+
+        // Read isFavorite or legacy isPinned
+        if let fav = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) {
+            self.isFavorite = fav
+        } else if let pin = try container.decodeIfPresent(Bool.self, forKey: .isPinned) {
+            self.isFavorite = pin
+        } else {
+            self.isFavorite = false
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(type, forKey: .type)
+        try container.encodeIfPresent(plainText, forKey: .plainText)
+        try container.encodeIfPresent(richTextRTF, forKey: .richTextRTF)
+        try container.encodeIfPresent(htmlContent, forKey: .htmlContent)
+        try container.encodeIfPresent(imageFileName, forKey: .imageFileName)
+        try container.encodeIfPresent(imageWidth, forKey: .imageWidth)
+        try container.encodeIfPresent(imageHeight, forKey: .imageHeight)
+        try container.encodeIfPresent(fileURLs, forKey: .fileURLs)
+        try container.encode(isFavorite, forKey: .isFavorite)
+        try container.encodeIfPresent(sourceAppName, forKey: .sourceAppName)
+        try container.encodeIfPresent(sourceAppBundleId, forKey: .sourceAppBundleId)
+        try container.encodeIfPresent(colorHex, forKey: .colorHex)
     }
 
     // MARK: - Computed Properties
@@ -142,14 +199,12 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
 
     public static func detectColor(from string: String) -> String? {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        // HEX: #RGB, #RRGGBB, #RRGGBBAA
         let hexRegex = try? NSRegularExpression(pattern: "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
         let range = NSRange(location: 0, length: trimmed.utf16.count)
         if hexRegex?.firstMatch(in: trimmed, options: [], range: range) != nil {
             return trimmed.uppercased()
         }
         
-        // rgb(r, g, b) or rgba(r, g, b, a)
         let rgbRegex = try? NSRegularExpression(pattern: "^rgba?\\(\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})(?:\\s*,\\s*([0-9.]+))?\\s*\\)$", options: .caseInsensitive)
         if let match = rgbRegex?.firstMatch(in: trimmed, options: [], range: range) {
             if let rRange = Range(match.range(at: 1), in: trimmed),

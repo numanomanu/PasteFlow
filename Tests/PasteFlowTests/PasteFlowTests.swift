@@ -32,8 +32,8 @@ import Foundation
 @Test @MainActor func testHistoryFiltering() {
     let store = HistoryStore()
     store.items = [
-        ClipItem(type: .text, plainText: "SwiftUI layout notes", isPinned: false),
-        ClipItem(type: .link, plainText: "https://developer.apple.com", isPinned: true),
+        ClipItem(type: .text, plainText: "SwiftUI layout notes", isFavorite: false),
+        ClipItem(type: .link, plainText: "https://developer.apple.com", isFavorite: true),
         ClipItem(type: .color, plainText: "#FF3B30", colorHex: "#FF3B30")
     ]
 
@@ -51,7 +51,7 @@ import Foundation
     // Tab category navigation
     store.selectedCategory = .all
     store.selectNextCategory()
-    #expect(store.selectedCategory == .pinned)
+    #expect(store.selectedCategory == .favorites)
     store.selectPreviousCategory()
     #expect(store.selectedCategory == .all)
 }

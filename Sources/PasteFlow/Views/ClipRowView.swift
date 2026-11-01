@@ -40,10 +40,10 @@ public struct ClipRowView: View {
 
                     Spacer(minLength: 4)
 
-                    if item.isPinned {
-                        Image(systemName: "pin.fill")
-                            .font(.system(size: 9))
-                            .foregroundColor(isSelected ? .white.opacity(0.9) : .orange)
+                    if item.isFavorite {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(isSelected ? .white.opacity(0.9) : .yellow)
                     }
                 }
 
