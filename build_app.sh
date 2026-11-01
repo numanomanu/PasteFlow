@@ -61,9 +61,15 @@ cat <<EOF > "${CONTENTS_DIR}/Info.plist"
 </plist>
 EOF
 
-# Ad-hoc code signing for local execution
-echo "✍️ Signing application bundle..."
-codesign --force --deep --sign - "${APP_DIR}"
+# Code signing: prefer local Apple Development certificate to preserve Accessibility permissions across builds
+SIGN_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep "Apple Development" | head -n 1 | awk -F '"' '{print $2}')
+if [ -n "${SIGN_IDENTITY}" ]; then
+    echo "✍️ Signing application bundle with ${SIGN_IDENTITY}..."
+    codesign --force --deep --sign "${SIGN_IDENTITY}" "${APP_DIR}"
+else
+    echo "✍️ Signing application bundle (ad-hoc)..."
+    codesign --force --deep --sign - "${APP_DIR}"
+fi
 
 echo "✅ Successfully built ${APP_DIR}!"
 echo "🚀 You can launch it with: open ${APP_DIR}"

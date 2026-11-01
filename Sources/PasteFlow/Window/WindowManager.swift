@@ -79,6 +79,14 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
         HistoryStore.shared.searchText = ""
         HistoryStore.shared.selectFirstItem()
 
+        // Capture the currently frontmost application before showing our panel
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        let myBundleId = Bundle.main.bundleIdentifier
+        if let front = frontApp, front.bundleIdentifier != myBundleId {
+            previousApp = front
+            NSLog("PasteFlow: show() captured previousApp: \(front.localizedName ?? "unknown") (\(front.bundleIdentifier ?? ""))")
+        }
+
         // Center on the active screen
         if let screen = NSScreen.main {
             let screenRect = screen.visibleFrame
@@ -105,10 +113,12 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
 
     public func pasteSelectedAndHide(plainTextOnly: Bool = false) {
         guard let item = HistoryStore.shared.selectedItem else {
+            NSLog("PasteFlow: pasteSelectedAndHide aborted because selectedItem is nil")
             hide()
             return
         }
         let targetApp = previousApp
+        NSLog("PasteFlow: pasteSelectedAndHide for targetApp: \(targetApp?.localizedName ?? "nil"), plain: \(plainTextOnly)")
         hide()
         PasteService.shared.paste(item: item, targetApp: targetApp, plainTextOnly: plainTextOnly)
     }
@@ -160,6 +170,7 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
         // Normal Enter -> Rich paste; Shift + Enter -> Plain text paste
         if (event.keyCode == 36 || event.keyCode == 76) && !hasNavigationModifiers {
             let isShift = flags.contains(.shift)
+            NSLog("PasteFlow: Enter key pressed (keyCode: \(event.keyCode), isShift: \(isShift))")
             pasteSelectedAndHide(plainTextOnly: isShift)
             return true
         }

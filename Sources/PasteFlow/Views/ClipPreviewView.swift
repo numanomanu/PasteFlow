@@ -18,6 +18,8 @@ public struct ClipPreviewView: View {
     public let onDelete: () -> Void
 
     @State private var previewMode: PreviewMode = .rich
+    @State private var cachedAttributed: AttributedString?
+    @State private var cachedItemId: UUID?
 
     public init(
         item: ClipItem?,
@@ -228,10 +230,25 @@ public struct ClipPreviewView: View {
         return nil
     }
 
+    private func cachedAttributedString(for item: ClipItem) -> AttributedString? {
+        if cachedItemId == item.id, let cached = cachedAttributed {
+            return cached
+        }
+        if let nsAttr = renderedAttributedString(for: item) {
+            let attr = AttributedString(nsAttr)
+            DispatchQueue.main.async {
+                self.cachedAttributed = attr
+                self.cachedItemId = item.id
+            }
+            return attr
+        }
+        return nil
+    }
+
     @ViewBuilder
     private func richRenderedView(for item: ClipItem) -> some View {
-        if let attr = renderedAttributedString(for: item) {
-            Text(AttributedString(attr))
+        if let attr = cachedAttributedString(for: item) {
+            Text(attr)
                 .font(.system(size: 12))
                 .textSelection(.enabled)
                 .lineSpacing(3)

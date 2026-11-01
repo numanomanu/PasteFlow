@@ -25,20 +25,32 @@ public final class PasteService {
         // 1. Always copy to pasteboard first
         copyToClipboard(item: item, plainTextOnly: plainTextOnly)
 
-        // 2. Reactivate target application if valid and not ourselves
+        // 2. Reactivate target application if valid and not ourselves (fallback to frontmost)
         let myBundleId = Bundle.main.bundleIdentifier
-        let appToActivate = (targetApp?.bundleIdentifier != myBundleId) ? targetApp : nil
-        appToActivate?.activate()
+        let appToActivate: NSRunningApplication?
+        if let target = targetApp, target.bundleIdentifier != myBundleId {
+            appToActivate = target
+        } else if let front = NSWorkspace.shared.frontmostApplication, front.bundleIdentifier != myBundleId {
+            appToActivate = front
+        } else {
+            appToActivate = nil
+        }
+
+        NSLog("PasteFlow: paste() invoked for '\(item.title)'. TargetApp: \(appToActivate?.localizedName ?? "nil") (pid: \(appToActivate?.processIdentifier ?? 0)), isTrusted: \(isAccessibilityTrusted)")
+
+        if let app = appToActivate {
+            _ = app.activate()
+        }
 
         // 3. Verify accessibility permission before attempting synthetic keystrokes
         guard isAccessibilityTrusted else {
-            print("⚠️ PasteFlow: Accessibility permission not granted. Simulated ⌘V skipped. Text is copied to clipboard.")
+            NSLog("⚠️ PasteFlow: Accessibility permission not granted. Simulated ⌘V skipped. Text is copied to clipboard.")
             return
         }
 
-        // 4. Poll until target application has become active (up to 300ms) or short delay, then simulate Cmd+V
+        // 4. Poll until target application has become active, then simulate Cmd+V
         Task { @MainActor in
-            let maxWaitIterations = 30 // 30 * 10ms = 300ms max
+            let maxWaitIterations = 20 // 20 * 10ms = 200ms max
             var iterations = 0
 
             if let app = appToActivate {
@@ -50,9 +62,10 @@ public final class PasteService {
                 try? await Task.sleep(nanoseconds: 50_000_000) // 50ms fallback
             }
 
-            // Small stabilization buffer for WindowServer focus settling
-            try? await Task.sleep(nanoseconds: 20_000_000) // 20ms
-            self.simulatePasteKeystroke()
+            // Adequate stabilization buffer for WindowServer focus settling
+            try? await Task.sleep(nanoseconds: 80_000_000) // 80ms
+            NSLog("PasteFlow: Simulating ⌘V keystroke to pid \(appToActivate?.processIdentifier ?? 0)")
+            self.simulatePasteKeystroke(targetPid: appToActivate?.processIdentifier)
         }
     }
 
@@ -94,7 +107,7 @@ public final class PasteService {
     }
 
     /// Simulate Cmd + V via CGEvent with hidSystemState
-    private func simulatePasteKeystroke() {
+    private func simulatePasteKeystroke(targetPid: pid_t? = nil) {
         guard isAccessibilityTrusted else { return }
 
         // Use hidSystemState so modifier key states from prior user taps do not taint the synthetic event
@@ -107,9 +120,14 @@ public final class PasteService {
         }
 
         keyDown.flags = .maskCommand
-        keyUp.flags = []
+        keyUp.flags = .maskCommand
 
+        if let pid = targetPid, pid > 0 {
+            keyDown.postToPid(pid)
+            keyUp.postToPid(pid)
+        }
         keyDown.post(tap: .cghidEventTap)
         keyUp.post(tap: .cghidEventTap)
+        NSLog("PasteFlow: ⌘V posted successfully (targetPid: \(targetPid ?? 0))")
     }
 }
