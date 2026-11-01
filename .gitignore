@@ -8,6 +8,11 @@ Icon
 /.build
 /Packages
 PasteFlow.app
+*.app
+*.dSYM/
+*.dSYM.zip
+*.zip
+*.dmg
 
 # Xcode
 *.xcodeproj/*
