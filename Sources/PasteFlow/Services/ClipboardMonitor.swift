@@ -72,7 +72,26 @@ public final class ClipboardMonitor: ObservableObject {
         let appName = frontApp?.localizedName
         let bundleId = frontApp?.bundleIdentifier
 
-        // 1. Check for Image
+        // 1. Check for File URLs first (prevents Finder file copies from being captured as icon TIFF images)
+        if types.contains(.fileURL) || types.contains(NSPasteboard.PasteboardType("public.file-url")) {
+            if let fileUrls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !fileUrls.isEmpty {
+                let paths = fileUrls.filter { $0.isFileURL }.map { $0.absoluteString }
+                if !paths.isEmpty {
+                    let firstPath = fileUrls.first?.path ?? ""
+                    let item = ClipItem(
+                        type: .file,
+                        plainText: firstPath,
+                        fileURLs: paths,
+                        sourceAppName: appName,
+                        sourceAppBundleId: bundleId
+                    )
+                    HistoryStore.shared.add(item: item)
+                    return
+                }
+            }
+        }
+
+        // 2. Check for Image (only when not a file copy)
         if types.contains(.tiff) || types.contains(.png) {
             if let image = NSImage(pasteboard: pasteboard) {
                 if let saved = HistoryStore.shared.saveImage(image) {
@@ -87,24 +106,6 @@ public final class ClipboardMonitor: ObservableObject {
                     HistoryStore.shared.add(item: item)
                     return
                 }
-            }
-        }
-
-        // 2. Check for File URLs
-        if let fileUrls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !fileUrls.isEmpty {
-            // If they are file URLs
-            let paths = fileUrls.filter { $0.isFileURL }.map { $0.absoluteString }
-            if !paths.isEmpty {
-                let firstPath = fileUrls.first?.path ?? ""
-                let item = ClipItem(
-                    type: .file,
-                    plainText: firstPath,
-                    fileURLs: paths,
-                    sourceAppName: appName,
-                    sourceAppBundleId: bundleId
-                )
-                HistoryStore.shared.add(item: item)
-                return
             }
         }
 

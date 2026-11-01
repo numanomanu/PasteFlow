@@ -25,21 +25,33 @@ public final class PasteService {
         // 1. Always copy to pasteboard first
         copyToClipboard(item: item)
 
-        // 2. Hide PasteFlow application so macOS returns focus to the target app
-        NSApp.hide(nil)
+        // 2. Reactivate target application if valid and not ourselves
+        let myBundleId = Bundle.main.bundleIdentifier
+        let appToActivate = (targetApp?.bundleIdentifier != myBundleId) ? targetApp : nil
+        appToActivate?.activate()
 
-        // 3. Re-activate previous application if available
-        if let targetApp = targetApp, targetApp.bundleIdentifier != Bundle.main.bundleIdentifier {
-            targetApp.activate()
-        }
-
-        // 4. If accessibility is trusted, simulate Cmd+V after focus settles
-        // NEVER spam system prompt dialogs during normal paste operations!
+        // 3. Verify accessibility permission before attempting synthetic keystrokes
         guard isAccessibilityTrusted else {
+            print("⚠️ PasteFlow: Accessibility permission not granted. Simulated ⌘V skipped. Text is copied to clipboard.")
             return
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        // 4. Poll until target application has become active (up to 300ms) or short delay, then simulate Cmd+V
+        Task { @MainActor in
+            let maxWaitIterations = 30 // 30 * 10ms = 300ms max
+            var iterations = 0
+
+            if let app = appToActivate {
+                while !app.isActive && iterations < maxWaitIterations {
+                    try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+                    iterations += 1
+                }
+            } else {
+                try? await Task.sleep(nanoseconds: 50_000_000) // 50ms fallback
+            }
+
+            // Small stabilization buffer for WindowServer focus settling
+            try? await Task.sleep(nanoseconds: 20_000_000) // 20ms
             self.simulatePasteKeystroke()
         }
     }
@@ -79,9 +91,12 @@ public final class PasteService {
         }
     }
 
-    /// Simulate Cmd + V via CGEvent (clean, silent, no AppleScript automation prompts)
+    /// Simulate Cmd + V via CGEvent with hidSystemState
     private func simulatePasteKeystroke() {
-        let source = CGEventSource(stateID: .combinedSessionState)
+        guard isAccessibilityTrusted else { return }
+
+        // Use hidSystemState so modifier key states from prior user taps do not taint the synthetic event
+        let source = CGEventSource(stateID: .hidSystemState)
         let vKeyCode: CGKeyCode = 0x09 // 'v'
 
         guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: vKeyCode, keyDown: true),
@@ -90,7 +105,7 @@ public final class PasteService {
         }
 
         keyDown.flags = .maskCommand
-        keyUp.flags = .maskCommand
+        keyUp.flags = []
 
         keyDown.post(tap: .cghidEventTap)
         keyUp.post(tap: .cghidEventTap)

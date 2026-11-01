@@ -41,7 +41,8 @@ public final class FloatingPanel: NSPanel {
     public override func sendEvent(_ event: NSEvent) {
         if event.type == .keyDown {
             // If the user is currently composing marked text in IME (e.g. Japanese IME),
-            // let Enter/Return confirm the marked text rather than triggering paste.
+            // forward ALL key events directly to the firstResponder (NSTextView) so IME
+            // candidates navigation, Enter, Tab, Esc, Backspace behave completely normally.
             let isComposing: Bool
             if let textView = firstResponder as? NSTextView {
                 isComposing = textView.hasMarkedText()
@@ -49,11 +50,9 @@ public final class FloatingPanel: NSPanel {
                 isComposing = false
             }
 
-            if event.keyCode == 36 || event.keyCode == 76 {
-                if isComposing {
-                    super.sendEvent(event)
-                    return
-                }
+            if isComposing {
+                super.sendEvent(event)
+                return
             }
 
             if let keyDelegate = keyDelegate, keyDelegate.handleKeyDown(event: event) {

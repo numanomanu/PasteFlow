@@ -27,12 +27,22 @@ public enum FilterCategory: String, CaseIterable, Identifiable {
 @MainActor
 public final class HistoryStore: ObservableObject {
     public static let shared = HistoryStore()
-    
+
+    private static let maxHistoryCountKey = "PasteFlow.maxHistoryCount"
+    private static let hasLaunchedBeforeKey = "PasteFlow.hasLaunchedBefore"
+
     @Published public var items: [ClipItem] = []
     @Published public var searchText: String = ""
     @Published public var selectedCategory: FilterCategory = .all
     @Published public var selectedItemId: UUID?
-    @Published public var maxHistoryCount: Int = 500
+
+    @Published public var maxHistoryCount: Int {
+        didSet {
+            UserDefaults.standard.set(maxHistoryCount, forKey: Self.maxHistoryCountKey)
+            trimHistory()
+            scheduleSave()
+        }
+    }
     
     private let fileManager = FileManager.default
     private var baseDirectory: URL {
@@ -67,10 +77,19 @@ public final class HistoryStore: ObservableObject {
     private var saveTask: Task<Void, Never>?
     
     public init() {
+        let savedMax = UserDefaults.standard.integer(forKey: Self.maxHistoryCountKey)
+        self.maxHistoryCount = (savedMax > 0) ? savedMax : 500
+
         loadHistory()
-        if items.isEmpty {
-            createSampleDataIfNeeded()
+
+        let hasLaunchedBefore = UserDefaults.standard.bool(forKey: Self.hasLaunchedBeforeKey)
+        if !hasLaunchedBefore {
+            if items.isEmpty {
+                createSampleDataIfNeeded()
+            }
+            UserDefaults.standard.set(true, forKey: Self.hasLaunchedBeforeKey)
         }
+
         selectedItemId = filteredItems.first?.id
     }
     
@@ -184,10 +203,12 @@ public final class HistoryStore: ObservableObject {
         if keepFavorites {
             let deletedImages = items.filter { !$0.isFavorite }.compactMap { $0.imageFileName }
             for img in deletedImages {
+                imageCache.removeObject(forKey: img as NSString)
                 try? fileManager.removeItem(at: imagesDirectory.appendingPathComponent(img))
             }
             items.removeAll { !$0.isFavorite }
         } else {
+            imageCache.removeAllObjects()
             try? fileManager.removeItem(at: imagesDirectory)
             items.removeAll()
         }
@@ -314,7 +335,21 @@ public final class HistoryStore: ObservableObject {
         case .text, .link, .color:
             return a.plainText == b.plainText
         case .image:
-            return a.imageFileName == b.imageFileName
+            if a.imageFileName == b.imageFileName { return true }
+            if let wA = a.imageWidth, let hA = a.imageHeight,
+               let wB = b.imageWidth, let hB = b.imageHeight,
+               wA == wB && hA == hB {
+                if let fileA = a.imageFileName, let fileB = b.imageFileName {
+                    let urlA = imagesDirectory.appendingPathComponent(fileA)
+                    let urlB = imagesDirectory.appendingPathComponent(fileB)
+                    if let sizeA = try? fileManager.attributesOfItem(atPath: urlA.path)[.size] as? Int64,
+                       let sizeB = try? fileManager.attributesOfItem(atPath: urlB.path)[.size] as? Int64,
+                       sizeA == sizeB {
+                        return true
+                    }
+                }
+            }
+            return false
         case .file:
             return a.fileURLs == b.fileURLs
         }
@@ -327,6 +362,7 @@ public final class HistoryStore: ObservableObject {
             let overflow = regular.suffix(from: maxHistoryCount)
             for item in overflow {
                 if let imageFile = item.imageFileName {
+                    imageCache.removeObject(forKey: imageFile as NSString)
                     try? fileManager.removeItem(at: imagesDirectory.appendingPathComponent(imageFile))
                 }
             }

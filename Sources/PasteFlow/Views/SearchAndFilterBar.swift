@@ -2,6 +2,7 @@ import SwiftUI
 
 public struct SearchAndFilterBar: View {
     @ObservedObject var store: HistoryStore
+    @EnvironmentObject var windowManager: WindowManager
     @FocusState private var isSearchFocused: Bool
 
     public init(store: HistoryStore) {
@@ -78,6 +79,14 @@ public struct SearchAndFilterBar: View {
         }
         .onAppear {
             isSearchFocused = true
+        }
+        .onChange(of: windowManager.isVisible) { _, isVisible in
+            if isVisible {
+                isSearchFocused = true
+            }
+        }
+        .onChange(of: store.searchText) { _, _ in
+            store.selectFirstItem()
         }
     }
 }

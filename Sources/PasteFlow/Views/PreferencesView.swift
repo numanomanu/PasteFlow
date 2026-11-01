@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 public struct PreferencesView: View {
     @ObservedObject var store: HistoryStore
@@ -10,6 +11,8 @@ public struct PreferencesView: View {
     @State private var isAccessibilityGranted: Bool = PasteService.shared.isAccessibilityTrusted
     @State private var showClearConfirmation: Bool = false
     @ObservedObject private var launchManager = LaunchAtLoginManager.shared
+
+    private let timer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     public init(store: HistoryStore, onDismiss: (() -> Void)? = nil) {
         self.store = store
@@ -98,30 +101,46 @@ public struct PreferencesView: View {
                         set: { launchManager.setEnabled($0) }
                     ))
 
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Accessibility Permission (Auto-paste)")
-                                .font(.system(size: 13, weight: .medium))
-                            Text(isAccessibilityGranted ? "Granted. Enter automatically pastes into previous app." : "Not granted. Copies to clipboard only.")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Accessibility Permission (Auto-paste)")
+                                    .font(.system(size: 13, weight: .medium))
+                                Text(isAccessibilityGranted ? "Granted. Enter automatically pastes into previous app." : "Not granted. Text is copied to clipboard without simulated keystrokes.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+
+                            if isAccessibilityGranted {
+                                Label("Enabled", systemImage: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                    .font(.system(size: 12))
+                            } else {
+                                Button("Enable...") {
+                                    PasteService.shared.promptForAccessibility()
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                            }
                         }
 
-                        Spacer()
-
-                        if isAccessibilityGranted {
-                            Label("Enabled", systemImage: "checkmark.circle.fill")
-                                .foregroundColor(.green)
-                                .font(.system(size: 12))
-                        } else {
-                            Button("Enable...") {
-                                PasteService.shared.promptForAccessibility()
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                    isAccessibilityGranted = PasteService.shared.isAccessibilityTrusted
-                                }
+                        if !isAccessibilityGranted {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("💡 If enabled in System Settings but not recognized after rebuild:")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                                Text("Remove PasteFlow with (—) and re-add with (+), or run:")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                                Text("tccutil reset Accessibility com.pasteflow.PasteFlow")
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .padding(4)
+                                    .background(Color.primary.opacity(0.06))
+                                    .cornerRadius(4)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
+                            .padding(.top, 4)
                         }
                     }
                 } header: {
@@ -139,7 +158,7 @@ public struct PreferencesView: View {
                         guideRow(key: "⌘ + F / ⌘ + P", desc: "Toggle favorite status")
                         guideRow(key: "⌘ + C", desc: "Copy without pasting")
                         guideRow(key: "⌘ + ⌫", desc: "Delete item from history")
-                        guideRow(key: "Esc", desc: "Close popup")
+                        guideRow(key: "Esc", desc: "Clear search / Close popup")
                     }
                 } header: {
                     Text("Keyboard Shortcuts")
@@ -164,6 +183,12 @@ public struct PreferencesView: View {
         .onAppear {
             isAccessibilityGranted = PasteService.shared.isAccessibilityTrusted
             launchManager.checkStatus()
+        }
+        .onReceive(timer) { _ in
+            let trusted = PasteService.shared.isAccessibilityTrusted
+            if isAccessibilityGranted != trusted {
+                isAccessibilityGranted = trusted
+            }
         }
     }
 

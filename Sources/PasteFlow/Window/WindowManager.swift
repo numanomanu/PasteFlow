@@ -12,9 +12,38 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
 
     private var panel: FloatingPanel?
     private var globalClickMonitor: Any?
+    private var appActivationObserver: Any?
 
     private init() {
         setupPanel()
+        setupAppActivationObserver()
+    }
+
+    private func setupAppActivationObserver() {
+        // Track the frontmost application continuously so previousApp is always up to date
+        // even when invoked via menu bar or hotkey.
+        let myBundleId = Bundle.main.bundleIdentifier
+        appActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else {
+                return
+            }
+            if let myBundleId = myBundleId, app.bundleIdentifier == myBundleId {
+                return
+            }
+            Task { @MainActor [weak self] in
+                self?.previousApp = app
+            }
+        }
+
+        // Initialize with current frontmost application
+        if let current = NSWorkspace.shared.frontmostApplication,
+           current.bundleIdentifier != myBundleId {
+            previousApp = current
+        }
     }
 
     private func setupPanel() {
@@ -45,16 +74,9 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
     public func show() {
         guard let panel = panel else { return }
 
-        // Always reset to main list view when opening
+        // Always reset to main list view and clear search on open
         showingPreferences = false
-
-        // Track frontmost app before showing so we can restore focus and paste into it
-        let frontApp = NSWorkspace.shared.frontmostApplication
-        if frontApp?.bundleIdentifier != Bundle.main.bundleIdentifier {
-            previousApp = frontApp
-        }
-
-        // Reset search query or selection if desired
+        HistoryStore.shared.searchText = ""
         HistoryStore.shared.selectFirstItem()
 
         // Center on the active screen
@@ -65,8 +87,8 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
             panel.setFrameOrigin(NSPoint(x: x, y: y))
         }
 
+        // Make panel key window without activating NSApp, keeping previousApp frontmost
         panel.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
         isVisible = true
 
         startMonitoringOutsideClicks()
@@ -78,7 +100,7 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
         panel?.orderOut(nil)
         isVisible = false
         showingPreferences = false
-        NSApp.hide(nil)
+        // Do NOT call NSApp.hide(nil); orderOut(nil) allows macOS to smoothly maintain previousApp focus.
     }
 
     public func pasteSelectedAndHide() {
@@ -110,9 +132,19 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
 
     public func handleKeyDown(event: NSEvent) -> Bool {
         let store = HistoryStore.shared
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
-        // ESC key (key code 53): Always close the window immediately
+        // ESC key (key code 53)
         if event.keyCode == 53 {
+            if showingPreferences {
+                showingPreferences = false
+                return true
+            }
+            if !store.searchText.isEmpty {
+                store.searchText = ""
+                store.selectFirstItem()
+                return true
+            }
             hide()
             return true
         }
@@ -122,27 +154,29 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
             return false
         }
 
-        // Return / Enter (key code 36: Return, key code 76: Keypad Enter)
-        if event.keyCode == 36 || event.keyCode == 76 {
+        let hasNavigationModifiers = flags.contains(.command) || flags.contains(.option) || flags.contains(.control)
+
+        // Return / Enter (key code 36: Return, key code 76: Keypad Enter) without modifiers
+        if (event.keyCode == 36 || event.keyCode == 76) && !hasNavigationModifiers {
             pasteSelectedAndHide()
             return true
         }
 
-        // Up arrow (key code 126)
-        if event.keyCode == 126 {
+        // Up arrow (key code 126) without modifiers
+        if event.keyCode == 126 && !hasNavigationModifiers {
             store.selectPrevious()
             return true
         }
 
-        // Down arrow (key code 125)
-        if event.keyCode == 125 {
+        // Down arrow (key code 125) without modifiers
+        if event.keyCode == 125 && !hasNavigationModifiers {
             store.selectNext()
             return true
         }
 
         // Tab key (key code 48): Cycle through filter categories
-        if event.keyCode == 48 {
-            let isShift = event.modifierFlags.contains(.shift)
+        if event.keyCode == 48 && !flags.contains(.command) && !flags.contains(.option) && !flags.contains(.control) {
+            let isShift = flags.contains(.shift)
             withAnimation(.easeInOut(duration: 0.15)) {
                 if isShift {
                     store.selectPreviousCategory()
@@ -153,11 +187,8 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
             return true
         }
 
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-
         // Cmd + 1 ~ Cmd + 9 for direct pasting top items
         if flags.contains(.command) {
-            // Number keys 1-9: keyCodes 18, 19, 20, 21, 23, 22, 26, 28, 25
             let numberKeyCodes: [UInt16] = [18, 19, 20, 21, 23, 22, 26, 28, 25]
             if let index = numberKeyCodes.firstIndex(of: event.keyCode) {
                 if let item = store.selectIndex(index) {

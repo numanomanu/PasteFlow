@@ -212,8 +212,10 @@ public struct ClipPreviewView: View {
             Spacer()
 
             Button(action: {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(value, forType: .string)
+                ClipboardMonitor.shared.suppressNextRecording()
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                pasteboard.setString(value, forType: .string)
             }) {
                 Image(systemName: "doc.on.doc")
                     .font(.system(size: 11))
