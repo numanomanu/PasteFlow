@@ -53,13 +53,15 @@ public struct SearchAndFilterBar: View {
                                 store.selectFirstItem()
                             }
                         }) {
-                            HStack(spacing: 5) {
+                            HStack(spacing: 4) {
                                 Image(systemName: category.iconName)
-                                    .font(.system(size: 10, weight: .semibold))
-                                Text(category.rawValue)
-                                    .font(.system(size: 11, weight: store.selectedCategory == category ? .semibold : .regular))
+                                    .font(.system(size: category == .all ? 10 : 11, weight: .semibold))
+                                if category == .all {
+                                    Text("All")
+                                        .font(.system(size: 11, weight: store.selectedCategory == category ? .semibold : .regular))
+                                }
                             }
-                            .padding(.horizontal, 10)
+                            .padding(.horizontal, category == .all ? 10 : 8)
                             .padding(.vertical, 4)
                             .background(
                                 Capsule()
@@ -68,6 +70,7 @@ public struct SearchAndFilterBar: View {
                             .foregroundColor(store.selectedCategory == category ? .white : .primary)
                         }
                         .buttonStyle(.plain)
+                        .help(category.rawValue)
                     }
                 }
                 .padding(.horizontal, 2)
