@@ -1,6 +1,25 @@
 import SwiftUI
 import AppKit
 
+@MainActor
+private final class RichPreviewCache {
+    static let shared = RichPreviewCache()
+    private let cache: NSCache<NSString, NSAttributedString> = {
+        let c = NSCache<NSString, NSAttributedString>()
+        c.countLimit = 40
+        return c
+    }()
+
+    func get(_ id: UUID) -> AttributedString? {
+        guard let nsAttr = cache.object(forKey: id.uuidString as NSString) else { return nil }
+        return AttributedString(nsAttr)
+    }
+
+    func set(_ nsAttr: NSAttributedString, for id: UUID) {
+        cache.setObject(nsAttr, forKey: id.uuidString as NSString)
+    }
+}
+
 public struct ClipPreviewView: View {
     private enum PreviewMode: String, CaseIterable, Identifiable {
         case rich = "Rich"
@@ -65,22 +84,47 @@ public struct ClipPreviewView: View {
             }
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.3))
             .task(id: item.id) {
-                // Reset mode and clear stale cache immediately on item switch
-                previewMode = item.hasRichText ? .rich : .plain
+                let targetItem = item
+                let isRich = targetItem.hasRichText
+                previewMode = isRich ? .rich : .plain
+
+                // 1. Instant cache hit (0ms)
+                if isRich, let hit = RichPreviewCache.shared.get(targetItem.id) {
+                    cachedAttributed = hit
+                    cachedItemId = targetItem.id
+                    return
+                }
+
+                // Clear stale preview immediately (shows fast plain text while debouncing)
                 cachedAttributed = nil
                 cachedItemId = nil
 
-                guard item.hasRichText else { return }
+                guard isRich else { return }
 
-                // Parse HTML/RTF asynchronously off the main thread so arrow-key scrolling never freezes
-                let targetItem = item
-                let rendered: AttributedString? = await Task.detached(priority: .userInitiated) {
-                    Self.buildAttributedString(for: targetItem)
-                }.value
+                // 2. Fast path: in-process RTF parsing (< 1ms, no WebKit XPC!)
+                if let rtf = targetItem.richTextRTF, rtf.count <= 200_000 {
+                    if let nsAttr = Self.parseRTF(rtf) {
+                        RichPreviewCache.shared.set(nsAttr, for: targetItem.id)
+                        if !Task.isCancelled, self.item?.id == targetItem.id {
+                            self.cachedAttributed = AttributedString(nsAttr)
+                            self.cachedItemId = targetItem.id
+                        }
+                        return
+                    }
+                }
 
-                if !Task.isCancelled, self.item?.id == targetItem.id {
-                    self.cachedAttributed = rendered
-                    self.cachedItemId = targetItem.id
+                // 3. Slow path (WebKit HTML): debounce 220ms so arrow-key navigation NEVER blocks!
+                try? await Task.sleep(nanoseconds: 220_000_000)
+                if Task.isCancelled || self.item?.id != targetItem.id { return }
+
+                // Apple requires HTML NSAttributedString parsing on the main thread;
+                // cap to 32KB so WebKit finishes quickly and never hangs.
+                if let nsAttr = Self.parseHTML(for: targetItem) {
+                    RichPreviewCache.shared.set(nsAttr, for: targetItem.id)
+                    if !Task.isCancelled, self.item?.id == targetItem.id {
+                        self.cachedAttributed = AttributedString(nsAttr)
+                        self.cachedItemId = targetItem.id
+                    }
                 }
             }
         } else {
@@ -199,55 +243,50 @@ public struct ClipPreviewView: View {
         }
     }
 
-    private nonisolated static func buildAttributedString(for item: ClipItem) -> AttributedString? {
-        var nsAttr: NSAttributedString? = nil
+    private static func parseRTF(_ rtf: Data) -> NSAttributedString? {
+        let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
+            .documentType: NSAttributedString.DocumentType.rtf
+        ]
+        guard let attr = try? NSAttributedString(data: rtf, options: options, documentAttributes: nil) else {
+            return nil
+        }
+        return normalizeForDisplay(attr)
+    }
 
-        // 1. Try HTML content first (wrapped with clean system font so it renders nicely)
+    private static func parseHTML(for item: ClipItem) -> NSAttributedString? {
+        let rawHTML: String?
         if let html = item.htmlContent, !html.isEmpty {
-            let styledHTML = """
-            <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; line-height: 1.45; }
-            code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-            </style>
-            \(html)
-            """
-            if let data = styledHTML.data(using: .utf8) {
-                let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
-                    .documentType: NSAttributedString.DocumentType.html,
-                    .characterEncoding: String.Encoding.utf8.rawValue
-                ]
-                nsAttr = try? NSAttributedString(data: data, options: options, documentAttributes: nil)
-            }
+            rawHTML = html
+        } else if item.hasHTML, let text = item.plainText, !text.isEmpty {
+            rawHTML = text
+        } else {
+            rawHTML = nil
         }
 
-        // 2. Try raw HTML in plainText if hasHTML and htmlContent was nil
-        if nsAttr == nil, item.hasHTML, let text = item.plainText {
-            let styledHTML = """
-            <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; line-height: 1.45; }
-            </style>
-            \(text)
-            """
-            if let data = styledHTML.data(using: .utf8) {
-                let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
-                    .documentType: NSAttributedString.DocumentType.html,
-                    .characterEncoding: String.Encoding.utf8.rawValue
-                ]
-                nsAttr = try? NSAttributedString(data: data, options: options, documentAttributes: nil)
-            }
+        // Skip WebKit HTML parsing for huge blobs (> 32KB) to prevent UI stall
+        guard let html = rawHTML, html.utf8.count <= 32_768 else {
+            return nil
         }
 
-        // 3. Try RTF data
-        if nsAttr == nil, let rtf = item.richTextRTF {
-            let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
-                .documentType: NSAttributedString.DocumentType.rtf
-            ]
-            nsAttr = try? NSAttributedString(data: rtf, options: options, documentAttributes: nil)
+        let styledHTML = """
+        <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; line-height: 1.45; }
+        code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+        </style>
+        \(html)
+        """
+        guard let data = styledHTML.data(using: .utf8) else { return nil }
+        let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
+            .documentType: NSAttributedString.DocumentType.html,
+            .characterEncoding: String.Encoding.utf8.rawValue
+        ]
+        guard let attr = try? NSAttributedString(data: data, options: options, documentAttributes: nil) else {
+            return nil
         }
+        return normalizeForDisplay(attr)
+    }
 
-        guard let baseAttr = nsAttr else { return nil }
-
-        // Normalize pure black text color so it remains legible in Dark Mode
+    private static func normalizeForDisplay(_ baseAttr: NSAttributedString) -> NSAttributedString {
         let mutable = NSMutableAttributedString(attributedString: baseAttr)
         let fullRange = NSRange(location: 0, length: mutable.length)
         mutable.enumerateAttribute(.foregroundColor, in: fullRange, options: []) { value, range, _ in
@@ -257,7 +296,6 @@ public struct ClipPreviewView: View {
                 mutable.removeAttribute(.foregroundColor, range: range)
             }
         }
-        // Remove opaque white backgrounds copied from web pages so they blend with frosted glass
         mutable.enumerateAttribute(.backgroundColor, in: fullRange, options: []) { value, range, _ in
             if let color = value as? NSColor,
                let rgb = color.usingColorSpace(.sRGB),
@@ -265,8 +303,13 @@ public struct ClipPreviewView: View {
                 mutable.removeAttribute(.backgroundColor, range: range)
             }
         }
+        return mutable
+    }
 
-        return AttributedString(mutable)
+    private func previewText(_ text: String?, maxChars: Int = 12_000) -> String {
+        guard let text = text else { return "" }
+        if text.count <= maxChars { return text }
+        return String(text.prefix(maxChars)) + "\n\n… (Preview truncated at \(maxChars) chars — full \(text.count) chars will be pasted)"
     }
 
     @ViewBuilder
@@ -278,7 +321,7 @@ public struct ClipPreviewView: View {
                 .lineSpacing(3)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            Text(item.plainText ?? "")
+            Text(previewText(item.plainText))
                 .font(.system(size: 12, design: isCodeLike(item.plainText) ? .monospaced : .default))
                 .foregroundColor(.primary)
                 .textSelection(.enabled)
@@ -295,14 +338,14 @@ public struct ClipPreviewView: View {
             case .rich:
                 richRenderedView(for: item)
             case .plain:
-                Text(item.plainText ?? "")
+                Text(previewText(item.plainText))
                     .font(.system(size: 12, design: isCodeLike(item.plainText) ? .monospaced : .default))
                     .foregroundColor(.primary)
                     .textSelection(.enabled)
                     .lineSpacing(3)
                     .frame(maxWidth: .infinity, alignment: .leading)
             case .rawHTML:
-                Text(item.htmlContent ?? (item.plainText ?? ""))
+                Text(previewText(item.htmlContent ?? item.plainText))
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.primary)
                     .textSelection(.enabled)
@@ -358,7 +401,7 @@ public struct ClipPreviewView: View {
                         .foregroundColor(.blue)
                         .textSelection(.enabled)
                 case .rawHTML:
-                    Text(item.htmlContent ?? (item.plainText ?? ""))
+                    Text(previewText(item.htmlContent ?? item.plainText))
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(.primary)
                         .textSelection(.enabled)

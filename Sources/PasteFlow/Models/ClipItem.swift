@@ -135,37 +135,41 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
         return editorNames.contains { name.contains($0) }
     }
 
+    private static let htmlStructuralTags: [String] = [
+        "<a ", "<a\n", "<a>", "<b ", "<b>", "<strong", "<i ", "<i>", "<em",
+        "<u ", "<u>", "<s ", "<s>", "<del", "<code", "<pre", "<ul", "<ol",
+        "<li", "<table", "<tr", "<td", "<th", "<h1", "<h2", "<h3", "<h4",
+        "<h5", "<h6", "<blockquote", "<img", "<hr", "<p>", "<p ", "<dl",
+        "<dt", "<dd", "</a>", "</b>", "</strong>", "</i>", "</em>", "</u>",
+        "</s>", "</del>", "</code>", "</pre>", "</ul>", "</ol>", "</li>",
+        "</table>", "</tr>", "</td>", "</th>", "</h", "</blockquote>", "</p>"
+    ]
+
+    private static let plainHTMLSignatures: [String] = [
+        "<html", "<!doctype", "<div", "<p>", "<p ", "<table", "<a href",
+        "<span", "</span>", "</div>", "</p>", "</a>", "</html>", "</table>",
+        "<b>", "</b>", "<strong>", "</strong>", "<ul>", "<li>"
+    ]
+
     public var hasHTML: Bool {
-        // 1. Check if htmlContent contains meaningful structural rich tags
+        // 1. Check only the first 4KB of htmlContent (avoids O(N) lowercasing of 500KB blobs on every render)
         if let html = htmlContent, !html.isEmpty {
-            let lower = html.lowercased()
-            let structuralTags = [
-                "<a ", "<a\n", "<a>", "<b ", "<b>", "<strong", "<i ", "<i>", "<em",
-                "<u ", "<u>", "<s ", "<s>", "<del", "<code", "<pre", "<ul", "<ol",
-                "<li", "<table", "<tr", "<td", "<th", "<h1", "<h2", "<h3", "<h4",
-                "<h5", "<h6", "<blockquote", "<img", "<hr", "<p>", "<p ", "<dl",
-                "<dt", "<dd", "</a>", "</b>", "</strong>", "</i>", "</em>", "</u>",
-                "</s>", "</del>", "</code>", "</pre>", "</ul>", "</ol>", "</li>",
-                "</table>", "</tr>", "</td>", "</th>", "</h", "</blockquote>", "</p>"
-            ]
-            if structuralTags.contains(where: { lower.contains($0) }) {
+            let sample = html.prefix(4096)
+            if Self.htmlStructuralTags.contains(where: { sample.range(of: $0, options: .caseInsensitive) != nil }) {
                 return true
             }
-            // If not an editor source and has generic htmlContent containing tags, treat as HTML
-            if !isEditorSource && (lower.contains("<p") || lower.contains("<div") || lower.contains("<table")) {
+            if !isEditorSource &&
+                (sample.range(of: "<p", options: .caseInsensitive) != nil ||
+                 sample.range(of: "<div", options: .caseInsensitive) != nil ||
+                 sample.range(of: "<table", options: .caseInsensitive) != nil) {
                 return true
             }
         }
 
-        // 2. Check if plainText itself contains explicit HTML structure
-        if let text = plainText, !text.isEmpty {
-            let lower = text.lowercased()
-            let plainSignatures = [
-                "<html", "<!doctype", "<div", "<p>", "<p ", "<table", "<a href",
-                "<span", "</span>", "</div>", "</p>", "</a>", "</html>", "</table>",
-                "<b>", "</b>", "<strong>", "</strong>", "<ul>", "<li>"
-            ]
-            if plainSignatures.contains(where: { lower.contains($0) }) {
+        // 2. Check if plainText itself contains explicit HTML structure (fast prefix scan)
+        if let text = plainText, !text.isEmpty, text.contains("<") {
+            let sample = text.prefix(4096)
+            if Self.plainHTMLSignatures.contains(where: { sample.range(of: $0, options: .caseInsensitive) != nil }) {
                 return true
             }
         }
@@ -175,7 +179,7 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
 
     public var hasRichText: Bool {
         if hasHTML { return true }
-        if let _ = richTextRTF {
+        if richTextRTF != nil {
             return !isEditorSource
         }
         return false
@@ -185,10 +189,14 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
         switch type {
         case .text, .link, .color:
             guard let text = plainText, !text.isEmpty else { return "(Empty text)" }
-            let lines = text.components(separatedBy: .newlines)
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }
-            return lines.first ?? "(Empty text)"
+            let sample = text.prefix(1024)
+            for line in sample.split(whereSeparator: \.isNewline) {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty {
+                    return trimmed.count > 120 ? String(trimmed.prefix(120)) : trimmed
+                }
+            }
+            return "(Empty text)"
 
         case .image:
             if let w = imageWidth, let h = imageHeight {
@@ -210,12 +218,17 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
     public var subtitle: String {
         switch type {
         case .text:
-            guard let text = plainText else { return "" }
-            let lines = text.components(separatedBy: .newlines)
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }
-            if lines.count > 1 {
-                return lines[1]
+            guard let text = plainText, !text.isEmpty else { return "" }
+            let sample = text.prefix(1024)
+            var foundFirst = false
+            for line in sample.split(whereSeparator: \.isNewline) {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty {
+                    if foundFirst {
+                        return trimmed.count > 120 ? String(trimmed.prefix(120)) : trimmed
+                    }
+                    foundFirst = true
+                }
             }
             return "\(text.count) chars"
 
