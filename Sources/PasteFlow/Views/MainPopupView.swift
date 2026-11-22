@@ -110,6 +110,7 @@ public struct MainPopupView: View {
                                     windowManager.pasteSelectedAndHide(plainTextOnly: isShift)
                                 }
                             )
+                            .equatable()
                             .id(item.id)
                         }
                     }

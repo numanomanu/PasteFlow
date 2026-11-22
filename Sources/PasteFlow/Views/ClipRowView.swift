@@ -1,11 +1,19 @@
 import SwiftUI
 
-public struct ClipRowView: View {
+public struct ClipRowView: View, Equatable {
     public let item: ClipItem
     public let isSelected: Bool
     public let index: Int
     public let onSelect: () -> Void
     public let onDoubleClick: () -> Void
+
+    public nonisolated static func == (lhs: ClipRowView, rhs: ClipRowView) -> Bool {
+        lhs.item.id == rhs.item.id &&
+        lhs.item.timestamp == rhs.item.timestamp &&
+        lhs.item.isFavorite == rhs.item.isFavorite &&
+        lhs.isSelected == rhs.isSelected &&
+        lhs.index == rhs.index
+    }
 
     @State private var isHovered: Bool = false
 

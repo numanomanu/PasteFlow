@@ -83,48 +83,15 @@ public struct ClipPreviewView: View {
                     .padding(.vertical, 8)
             }
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.3))
-            .task(id: item.id) {
-                let targetItem = item
-                let isRich = targetItem.hasRichText
-                previewMode = isRich ? .rich : .plain
-
-                // 1. Instant cache hit (0ms)
-                if isRich, let hit = RichPreviewCache.shared.get(targetItem.id) {
-                    cachedAttributed = hit
-                    cachedItemId = targetItem.id
-                    return
-                }
-
-                // Clear stale preview immediately (shows fast plain text while debouncing)
-                cachedAttributed = nil
-                cachedItemId = nil
-
-                guard isRich else { return }
-
-                // 2. Fast path: in-process RTF parsing (< 1ms, no WebKit XPC!)
-                if let rtf = targetItem.richTextRTF, rtf.count <= 200_000 {
-                    if let nsAttr = Self.parseRTF(rtf) {
-                        RichPreviewCache.shared.set(nsAttr, for: targetItem.id)
-                        if !Task.isCancelled, self.item?.id == targetItem.id {
-                            self.cachedAttributed = AttributedString(nsAttr)
-                            self.cachedItemId = targetItem.id
-                        }
-                        return
-                    }
-                }
-
-                // 3. Slow path (WebKit HTML): debounce 220ms so arrow-key navigation NEVER blocks!
-                try? await Task.sleep(nanoseconds: 220_000_000)
-                if Task.isCancelled || self.item?.id != targetItem.id { return }
-
-                // Apple requires HTML NSAttributedString parsing on the main thread;
-                // cap to 32KB so WebKit finishes quickly and never hangs.
-                if let nsAttr = Self.parseHTML(for: targetItem) {
-                    RichPreviewCache.shared.set(nsAttr, for: targetItem.id)
-                    if !Task.isCancelled, self.item?.id == targetItem.id {
-                        self.cachedAttributed = AttributedString(nsAttr)
-                        self.cachedItemId = targetItem.id
-                    }
+            .onChange(of: item.id) { _, _ in
+                syncPreviewForCurrentItem(item)
+            }
+            .onAppear {
+                syncPreviewForCurrentItem(item)
+            }
+            .onChange(of: previewMode) { _, newMode in
+                if newMode == .rich {
+                    loadRichPreviewIfNeeded(for: item)
                 }
             }
         } else {
@@ -216,11 +183,56 @@ public struct ClipPreviewView: View {
     private var availableModes: [PreviewMode] {
         guard let item = item else { return [.plain] }
         if item.hasHTML {
-            return [.rich, .plain, .rawHTML]
+            return [.plain, .rich, .rawHTML]
         } else if item.hasRichText {
-            return [.rich, .plain]
+            return [.plain, .rich]
         } else {
             return [.plain]
+        }
+    }
+
+    private func syncPreviewForCurrentItem(_ item: ClipItem) {
+        if let hit = RichPreviewCache.shared.get(item.id) {
+            cachedAttributed = hit
+            cachedItemId = item.id
+            previewMode = .rich
+            return
+        }
+
+        cachedAttributed = nil
+        cachedItemId = nil
+
+        // Fast path: in-process RTF takes < 1ms, safe to render immediately
+        if item.hasRichText, let rtf = item.richTextRTF, rtf.count <= 200_000,
+           let nsAttr = Self.parseRTF(rtf) {
+            RichPreviewCache.shared.set(nsAttr, for: item.id)
+            cachedAttributed = AttributedString(nsAttr)
+            cachedItemId = item.id
+            previewMode = .rich
+        } else {
+            // HTML-only items default to Plain (0ms instant!) — WebKit HTML only runs when user clicks "Rich"
+            previewMode = .plain
+        }
+    }
+
+    private func loadRichPreviewIfNeeded(for item: ClipItem) {
+        if cachedItemId == item.id && cachedAttributed != nil { return }
+        if let hit = RichPreviewCache.shared.get(item.id) {
+            cachedAttributed = hit
+            cachedItemId = item.id
+            return
+        }
+        if let rtf = item.richTextRTF, rtf.count <= 200_000,
+           let nsAttr = Self.parseRTF(rtf) {
+            RichPreviewCache.shared.set(nsAttr, for: item.id)
+            cachedAttributed = AttributedString(nsAttr)
+            cachedItemId = item.id
+            return
+        }
+        if let nsAttr = Self.parseHTML(for: item) {
+            RichPreviewCache.shared.set(nsAttr, for: item.id)
+            cachedAttributed = AttributedString(nsAttr)
+            cachedItemId = item.id
         }
     }
 

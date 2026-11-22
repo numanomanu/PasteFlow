@@ -33,9 +33,16 @@ public final class HistoryStore: ObservableObject {
     private static let maxHistoryCountKey = "PasteFlow.maxHistoryCount"
     private static let hasLaunchedBeforeKey = "PasteFlow.hasLaunchedBefore"
 
-    @Published public var items: [ClipItem] = []
-    @Published public var searchText: String = ""
-    @Published public var selectedCategory: FilterCategory = .all
+    @Published public var items: [ClipItem] = [] {
+        didSet { recomputeFilteredItems() }
+    }
+    @Published public var searchText: String = "" {
+        didSet { recomputeFilteredItems() }
+    }
+    @Published public var selectedCategory: FilterCategory = .all {
+        didSet { recomputeFilteredItems() }
+    }
+    @Published public private(set) var filteredItems: [ClipItem] = []
     @Published public var selectedItemId: UUID?
 
     @Published public var maxHistoryCount: Int {
@@ -92,15 +99,16 @@ public final class HistoryStore: ObservableObject {
             UserDefaults.standard.set(true, forKey: Self.hasLaunchedBeforeKey)
         }
 
+        recomputeFilteredItems()
         selectedItemId = filteredItems.first?.id
     }
     
     // MARK: - Filtering
     
-    public var filteredItems: [ClipItem] {
+    private func recomputeFilteredItems() {
         var result = items
         
-        // Category filter
+        // Category filter (O(1) precomputed Bool reads!)
         switch selectedCategory {
         case .all:
             break
@@ -123,19 +131,16 @@ public final class HistoryStore: ObservableObject {
         if !query.isEmpty {
             let terms = query.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
             result = result.filter { item in
-                let targetText = [
-                    item.title,
-                    item.subtitle,
-                    item.plainText ?? "",
-                    item.sourceAppName ?? ""
-                ].joined(separator: " ").lowercased()
-                
-                return terms.allSatisfy { targetText.contains($0) }
+                terms.allSatisfy { term in
+                    item.title.localizedCaseInsensitiveContains(term) ||
+                    item.subtitle.localizedCaseInsensitiveContains(term) ||
+                    (item.plainText?.localizedCaseInsensitiveContains(term) ?? false) ||
+                    (item.sourceAppName?.localizedCaseInsensitiveContains(term) ?? false)
+                }
             }
         }
         
-        // Keep pure chronological order for All (no favorite hijacking)
-        return result
+        filteredItems = result
     }
     
     public var selectedItem: ClipItem? {
@@ -166,6 +171,7 @@ public final class HistoryStore: ObservableObject {
             if let bundleId = item.sourceAppBundleId {
                 existing.sourceAppBundleId = bundleId
             }
+            existing.refreshCachedMetadata()
 
             // Clean up newly saved duplicate image file to prevent disk leak
             if let newImageFile = item.imageFileName, newImageFile != existing.imageFileName {

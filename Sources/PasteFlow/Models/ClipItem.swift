@@ -18,6 +18,13 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
     public var sourceAppBundleId: String?
     public var colorHex: String?
 
+    // Pre-computed cached metadata (not encoded to JSON; O(1) reads during UI rendering & filtering)
+    public private(set) var isEditorSource: Bool = false
+    public private(set) var hasHTML: Bool = false
+    public private(set) var hasRichText: Bool = false
+    public private(set) var title: String = ""
+    public private(set) var subtitle: String = ""
+
     // Backwards compatibility for isPinned
     public var isPinned: Bool {
         get { isFavorite }
@@ -54,6 +61,7 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
         self.sourceAppName = sourceAppName
         self.sourceAppBundleId = sourceAppBundleId
         self.colorHex = colorHex
+        self.refreshCachedMetadata()
     }
 
     // Custom Decodable to support both isFavorite and legacy isPinned
@@ -87,6 +95,8 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
         } else {
             self.isFavorite = false
         }
+
+        self.refreshCachedMetadata()
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -107,33 +117,26 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
         try container.encodeIfPresent(colorHex, forKey: .colorHex)
     }
 
-    // MARK: - Computed Properties
+    // MARK: - Cached Metadata Computation
 
-    public var isEditorSource: Bool {
-        let bundle = (sourceAppBundleId ?? "").lowercased()
-        let name = (sourceAppName ?? "").lowercased()
-        let editorBundlePrefixes = [
-            "com.microsoft.vscode",
-            "com.apple.dt.xcode",
-            "com.sublimetext",
-            "com.jetbrains",
-            "com.todesktop.230313mzl4w4u92", // Cursor
-            "dev.zed.zed",
-            "com.panic.nova",
-            "com.barebones.bbedit",
-            "com.github.atom",
-            "com.google.android.studio"
-        ]
-        if editorBundlePrefixes.contains(where: { bundle.hasPrefix($0) }) {
-            return true
-        }
-        let editorNames = [
-            "visual studio code", "vscode", "xcode", "sublime text",
-            "intellij", "pycharm", "webstorm", "goland", "android studio",
-            "cursor", "zed", "fleet", "nova", "bbedit"
-        ]
-        return editorNames.contains { name.contains($0) }
-    }
+    private static let editorBundlePrefixes: [String] = [
+        "com.microsoft.vscode",
+        "com.apple.dt.xcode",
+        "com.sublimetext",
+        "com.jetbrains",
+        "com.todesktop.230313mzl4w4u92", // Cursor
+        "dev.zed.zed",
+        "com.panic.nova",
+        "com.barebones.bbedit",
+        "com.github.atom",
+        "com.google.android.studio"
+    ]
+
+    private static let editorNames: [String] = [
+        "visual studio code", "vscode", "xcode", "sublime text",
+        "intellij", "pycharm", "webstorm", "goland", "android studio",
+        "cursor", "zed", "fleet", "nova", "bbedit"
+    ]
 
     private static let htmlStructuralTags: [String] = [
         "<a ", "<a\n", "<a>", "<b ", "<b>", "<strong", "<i ", "<i>", "<em",
@@ -151,102 +154,84 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
         "<b>", "</b>", "<strong>", "</strong>", "<ul>", "<li>"
     ]
 
-    public var hasHTML: Bool {
-        // 1. Check only the first 4KB of htmlContent (avoids O(N) lowercasing of 500KB blobs on every render)
+    public mutating func refreshCachedMetadata() {
+        // 1. Editor source check
+        let bundle = (sourceAppBundleId ?? "").lowercased()
+        let name = (sourceAppName ?? "").lowercased()
+        let editor = Self.editorBundlePrefixes.contains(where: { bundle.hasPrefix($0) }) ||
+                     Self.editorNames.contains(where: { name.contains($0) })
+        self.isEditorSource = editor
+
+        // 2. HTML detection (prefix scan, computed ONCE per item!)
+        var detectedHTML = false
         if let html = htmlContent, !html.isEmpty {
-            let sample = html.prefix(4096)
-            if Self.htmlStructuralTags.contains(where: { sample.range(of: $0, options: .caseInsensitive) != nil }) {
-                return true
-            }
-            if !isEditorSource &&
-                (sample.range(of: "<p", options: .caseInsensitive) != nil ||
-                 sample.range(of: "<div", options: .caseInsensitive) != nil ||
-                 sample.range(of: "<table", options: .caseInsensitive) != nil) {
-                return true
+            let sample = html.prefix(4096).lowercased()
+            if Self.htmlStructuralTags.contains(where: { sample.contains($0) }) {
+                detectedHTML = true
+            } else if !editor && (sample.contains("<p") || sample.contains("<div") || sample.contains("<table")) {
+                detectedHTML = true
             }
         }
-
-        // 2. Check if plainText itself contains explicit HTML structure (fast prefix scan)
-        if let text = plainText, !text.isEmpty, text.contains("<") {
-            let sample = text.prefix(4096)
-            if Self.plainHTMLSignatures.contains(where: { sample.range(of: $0, options: .caseInsensitive) != nil }) {
-                return true
+        if !detectedHTML, let text = plainText, !text.isEmpty, text.contains("<") {
+            let sample = text.prefix(4096).lowercased()
+            if Self.plainHTMLSignatures.contains(where: { sample.contains($0) }) {
+                detectedHTML = true
             }
         }
+        self.hasHTML = detectedHTML
+        self.hasRichText = detectedHTML || (richTextRTF != nil && !editor)
 
-        return false
-    }
-
-    public var hasRichText: Bool {
-        if hasHTML { return true }
-        if richTextRTF != nil {
-            return !isEditorSource
-        }
-        return false
-    }
-
-    public var title: String {
+        // 3. Title & Subtitle (computed ONCE per item!)
         switch type {
         case .text, .link, .color:
-            guard let text = plainText, !text.isEmpty else { return "(Empty text)" }
-            let sample = text.prefix(1024)
-            for line in sample.split(whereSeparator: \.isNewline) {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                if !trimmed.isEmpty {
-                    return trimmed.count > 120 ? String(trimmed.prefix(120)) : trimmed
+            if let text = plainText, !text.isEmpty {
+                let sample = text.prefix(1024)
+                var firstLine: String? = nil
+                var secondLine: String? = nil
+                for line in sample.split(whereSeparator: \.isNewline) {
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    if !trimmed.isEmpty {
+                        if firstLine == nil {
+                            firstLine = trimmed.count > 120 ? String(trimmed.prefix(120)) : trimmed
+                        } else {
+                            secondLine = trimmed.count > 120 ? String(trimmed.prefix(120)) : trimmed
+                            break
+                        }
+                    }
                 }
+                self.title = firstLine ?? "(Empty text)"
+                switch type {
+                case .text:
+                    self.subtitle = secondLine ?? "\(text.count) chars"
+                case .link:
+                    self.subtitle = text.count > 120 ? String(text.prefix(120)) : text
+                case .color:
+                    self.subtitle = colorHex ?? self.title
+                default:
+                    self.subtitle = ""
+                }
+            } else {
+                self.title = "(Empty text)"
+                self.subtitle = ""
             }
-            return "(Empty text)"
 
         case .image:
             if let w = imageWidth, let h = imageHeight {
-                return "Image (\(Int(w)) × \(Int(h)))"
+                self.title = "Image (\(Int(w)) × \(Int(h)))"
+                self.subtitle = "\(Int(w)) × \(Int(h)) px"
+            } else {
+                self.title = "Image"
+                self.subtitle = "PNG Image"
             }
-            return "Image"
 
         case .file:
             if let urls = fileURLs, let first = urls.first, let url = URL(string: first) {
-                if urls.count > 1 {
-                    return "\(url.lastPathComponent) +\(urls.count - 1)"
-                }
-                return url.lastPathComponent
+                self.title = urls.count > 1 ? "\(url.lastPathComponent) +\(urls.count - 1)" : url.lastPathComponent
+                self.subtitle = url.deletingLastPathComponent().path
+            } else {
+                self.title = "File"
+                self.subtitle = ""
             }
-            return "File"
-        }
-    }
-
-    public var subtitle: String {
-        switch type {
-        case .text:
-            guard let text = plainText, !text.isEmpty else { return "" }
-            let sample = text.prefix(1024)
-            var foundFirst = false
-            for line in sample.split(whereSeparator: \.isNewline) {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                if !trimmed.isEmpty {
-                    if foundFirst {
-                        return trimmed.count > 120 ? String(trimmed.prefix(120)) : trimmed
-                    }
-                    foundFirst = true
-                }
-            }
-            return "\(text.count) chars"
-
-        case .link:
-            return plainText ?? ""
-
-        case .color:
-            return colorHex ?? (plainText ?? "")
-
-        case .image:
-            if let w = imageWidth, let h = imageHeight {
-                return "\(Int(w)) × \(Int(h)) px"
-            }
-            return "PNG Image"
-
-        case .file:
-            guard let urls = fileURLs, let first = urls.first, let url = URL(string: first) else { return "" }
-            return url.deletingLastPathComponent().path
         }
     }
 
