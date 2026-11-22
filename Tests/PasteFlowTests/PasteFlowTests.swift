@@ -141,3 +141,15 @@ import AppKit
     #expect(obsItem.isEditorSource == false)
     #expect(vscodeItem.isEditorSource == true)
 }
+
+@Test @MainActor func testMoveToTop() {
+    let store = HistoryStore()
+    let item1 = ClipItem(type: .text, plainText: "First")
+    let item2 = ClipItem(type: .text, plainText: "Second")
+    let item3 = ClipItem(type: .text, plainText: "Third")
+    store.items = [item1, item2, item3]
+
+    store.moveToTop(id: item3.id)
+    #expect(store.items.first?.id == item3.id)
+    #expect(store.items.map(\.id) == [item3.id, item1.id, item2.id])
+}

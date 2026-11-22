@@ -138,6 +138,7 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
         let targetApp = previousApp
         NSLog("PasteFlow: pasteSelectedAndHide for targetApp: \(targetApp?.localizedName ?? "nil"), plain: \(plainTextOnly)")
         hide()
+        HistoryStore.shared.moveToTop(id: item.id)
         PasteService.shared.paste(item: item, targetApp: targetApp, plainTextOnly: plainTextOnly)
     }
 
@@ -147,12 +148,14 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
             return
         }
         hide()
+        HistoryStore.shared.moveToTop(id: item.id)
         PasteService.shared.copyToClipboard(item: item, plainTextOnly: plainTextOnly)
     }
 
     public func pasteItemAndHide(_ item: ClipItem, plainTextOnly: Bool = false) {
         let targetApp = previousApp
         hide()
+        HistoryStore.shared.moveToTop(id: item.id)
         PasteService.shared.paste(item: item, targetApp: targetApp, plainTextOnly: plainTextOnly)
     }
 

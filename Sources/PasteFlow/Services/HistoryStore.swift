@@ -193,6 +193,19 @@ public final class HistoryStore: ObservableObject {
         scheduleSave()
     }
     
+    public func moveToTop(id: UUID) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        if index == 0 {
+            items[0].timestamp = Date()
+        } else {
+            var item = items.remove(at: index)
+            item.timestamp = Date()
+            items.insert(item, at: 0)
+        }
+        selectedItemId = id
+        scheduleSave()
+    }
+
     public func toggleFavorite(id: UUID) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index].isFavorite.toggle()
