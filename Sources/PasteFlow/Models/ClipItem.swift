@@ -112,8 +112,27 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
     public var isEditorSource: Bool {
         let bundle = (sourceAppBundleId ?? "").lowercased()
         let name = (sourceAppName ?? "").lowercased()
-        let editorKeywords = ["vscode", "code", "xcode", "sublime", "intellij", "jetbrains", "studio", "fleet", "cursor", "nova", "atom", "bbedit"]
-        return editorKeywords.contains { bundle.contains($0) || name.contains($0) }
+        let editorBundlePrefixes = [
+            "com.microsoft.vscode",
+            "com.apple.dt.xcode",
+            "com.sublimetext",
+            "com.jetbrains",
+            "com.todesktop.230313mzl4w4u92", // Cursor
+            "dev.zed.zed",
+            "com.panic.nova",
+            "com.barebones.bbedit",
+            "com.github.atom",
+            "com.google.android.studio"
+        ]
+        if editorBundlePrefixes.contains(where: { bundle.hasPrefix($0) }) {
+            return true
+        }
+        let editorNames = [
+            "visual studio code", "vscode", "xcode", "sublime text",
+            "intellij", "pycharm", "webstorm", "goland", "android studio",
+            "cursor", "zed", "fleet", "nova", "bbedit"
+        ]
+        return editorNames.contains { name.contains($0) }
     }
 
     public var hasHTML: Bool {

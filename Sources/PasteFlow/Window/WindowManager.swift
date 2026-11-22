@@ -13,6 +13,7 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
     private var panel: FloatingPanel?
     private var globalClickMonitor: Any?
     private var appActivationObserver: Any?
+    private var resignKeyObserver: Any?
 
     private init() {
         setupPanel()
@@ -61,6 +62,21 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
 
         panel.contentView = NSHostingView(rootView: contentView)
         self.panel = panel
+
+        // Auto-hide if the panel resigns key (e.g., Cmd+Tab to another app), unless a modal/sheet/menu is open
+        resignKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self, self.isVisible else { return }
+                if NSApp.modalWindow != nil || self.panel?.attachedSheet != nil {
+                    return
+                }
+                self.hide()
+            }
+        }
     }
 
     public func toggle() {
@@ -87,8 +103,10 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
             NSLog("PasteFlow: show() captured previousApp: \(front.localizedName ?? "unknown") (\(front.bundleIdentifier ?? ""))")
         }
 
-        // Center on the active screen
-        if let screen = NSScreen.main {
+        // Center on the screen containing the mouse cursor (fallback to main screen)
+        let mouseLocation = NSEvent.mouseLocation
+        let targetScreen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) }) ?? NSScreen.main
+        if let screen = targetScreen {
             let screenRect = screen.visibleFrame
             let x = screenRect.midX - (panel.frame.width / 2)
             let y = screenRect.midY - (panel.frame.height / 2) + 40
@@ -212,13 +230,15 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
             }
 
             // Cmd + C or Cmd + Shift + C: Copy without pasting
-            if event.charactersIgnoringModifiers == "c" {
+            // Note: charactersIgnoringModifiers still applies Shift ("C"), so lowercase it!
+            let char = event.charactersIgnoringModifiers?.lowercased()
+            if char == "c" {
                 copySelectedAndHide(plainTextOnly: isShift)
                 return true
             }
 
             // Cmd + P or Cmd + F: Toggle Favorite
-            if event.charactersIgnoringModifiers == "p" || event.charactersIgnoringModifiers == "f" {
+            if char == "p" || char == "f" {
                 if let item = store.selectedItem {
                     store.toggleFavorite(id: item.id)
                     return true
@@ -241,14 +261,20 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
 
     private func startMonitoringOutsideClicks() {
         stopMonitoringOutsideClicks()
-        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self = self, self.isVisible else { return }
-                if let panel = self.panel {
-                    let mouseLocation = NSEvent.mouseLocation
-                    if !panel.frame.contains(mouseLocation) {
-                        self.hide()
-                    }
+                // Do not hide while a modal sheet/dialog is active
+                if NSApp.modalWindow != nil || self.panel?.attachedSheet != nil {
+                    return
+                }
+                let mouseLocation = NSEvent.mouseLocation
+                // Check all visible windows owned by PasteFlow (includes Picker menus, popovers, etc.)
+                let clickedInsideAppWindow = NSApp.windows.contains { window in
+                    window.isVisible && window.frame.contains(mouseLocation)
+                }
+                if !clickedInsideAppWindow {
+                    self.hide()
                 }
             }
         }

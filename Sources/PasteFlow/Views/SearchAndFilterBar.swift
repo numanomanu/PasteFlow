@@ -76,11 +76,22 @@ public struct SearchAndFilterBar: View {
             }
         }
         .onAppear {
-            isSearchFocused = true
+            DispatchQueue.main.async {
+                isSearchFocused = true
+            }
         }
         .onChange(of: windowManager.isVisible) { _, isVisible in
             if isVisible {
-                isSearchFocused = true
+                DispatchQueue.main.async {
+                    isSearchFocused = true
+                }
+            }
+        }
+        .onChange(of: windowManager.showingPreferences) { _, showingPrefs in
+            if !showingPrefs && windowManager.isVisible {
+                DispatchQueue.main.async {
+                    isSearchFocused = true
+                }
             }
         }
         .onChange(of: store.searchText) { _, _ in

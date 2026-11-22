@@ -148,27 +148,39 @@ public final class HistoryStore: ObservableObject {
     // MARK: - Actions
     
     public func add(item: ClipItem) {
-        // Check for duplicates with the most recent item
-        if let first = items.first, isDuplicate(first, item) {
-            // Update timestamp and bring to top
-            var updated = first
-            updated.timestamp = Date()
-            items.removeFirst()
-            items.insert(updated, at: 0)
+        // Check if an identical item already exists anywhere in history
+        if let existingIndex = items.firstIndex(where: { isDuplicate($0, item) }) {
+            var existing = items.remove(at: existingIndex)
+            existing.timestamp = Date()
+
+            // Preserve newer rich formatting if the duplicate copy included HTML/RTF
+            if let html = item.htmlContent, !html.isEmpty {
+                existing.htmlContent = html
+            }
+            if let rtf = item.richTextRTF {
+                existing.richTextRTF = rtf
+            }
+            if let appName = item.sourceAppName {
+                existing.sourceAppName = appName
+            }
+            if let bundleId = item.sourceAppBundleId {
+                existing.sourceAppBundleId = bundleId
+            }
+
+            // Clean up newly saved duplicate image file to prevent disk leak
+            if let newImageFile = item.imageFileName, newImageFile != existing.imageFileName {
+                imageCache.removeObject(forKey: newImageFile as NSString)
+                try? fileManager.removeItem(at: imagesDirectory.appendingPathComponent(newImageFile))
+            }
+
+            items.insert(existing, at: 0)
             selectFirstItem()
             scheduleSave()
             return
         }
-        
-        // If it exists further down, remove it to bring to top
-        if let existingIndex = items.firstIndex(where: { isDuplicate($0, item) }) {
-            var existing = items.remove(at: existingIndex)
-            existing.timestamp = Date()
-            items.insert(existing, at: 0)
-        } else {
-            items.insert(item, at: 0)
-        }
-        
+
+        items.insert(item, at: 0)
+
         // Trim history
         trimHistory()
         selectFirstItem()
@@ -186,6 +198,7 @@ public final class HistoryStore: ObservableObject {
     }
     
     public func delete(id: UUID) {
+        let oldFilteredIndex = filteredItems.firstIndex(where: { $0.id == id })
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         let item = items.remove(at: index)
         
@@ -196,9 +209,16 @@ public final class HistoryStore: ObservableObject {
             try? fileManager.removeItem(at: fileURL)
         }
         
-        // Update selection if the deleted item was selected
+        // Keep selection at the same position in the filtered list
         if selectedItemId == id {
-            selectedItemId = filteredItems.first?.id
+            let newList = filteredItems
+            if newList.isEmpty {
+                selectedItemId = nil
+            } else if let oldIdx = oldFilteredIndex {
+                selectedItemId = newList[min(oldIdx, newList.count - 1)].id
+            } else {
+                selectedItemId = newList.first?.id
+            }
         }
         scheduleSave()
     }

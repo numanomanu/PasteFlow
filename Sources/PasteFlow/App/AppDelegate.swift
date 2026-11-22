@@ -23,6 +23,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         print("PasteFlow started successfully!")
     }
 
+    public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        WindowManager.shared.show()
+        return true
+    }
+
     public func applicationWillTerminate(_ notification: Notification) {
         ClipboardMonitor.shared.stopMonitoring()
         HotKeyManager.shared.unregister()

@@ -47,6 +47,13 @@ public final class ClipboardMonitor: ObservableObject {
         isSuppressed = true
     }
 
+    /// Atomically sync lastChangeCount after PasteFlow writes to the pasteboard.
+    /// Prevents race conditions and avoids swallowing the user's next real copy.
+    public func syncChangeCount() {
+        lastChangeCount = NSPasteboard.general.changeCount
+        isSuppressed = false
+    }
+
     private func checkForChanges() {
         let pasteboard = NSPasteboard.general
         let currentChangeCount = pasteboard.changeCount

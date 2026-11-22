@@ -96,12 +96,14 @@ public struct ClipRowView: View {
         .onHover { hovering in
             isHovered = hovering
         }
-        .onTapGesture(count: 2) {
-            onDoubleClick()
-        }
         .onTapGesture(count: 1) {
             onSelect()
         }
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                onDoubleClick()
+            }
+        )
     }
 
     @ViewBuilder

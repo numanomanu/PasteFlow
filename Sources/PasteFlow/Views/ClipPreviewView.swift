@@ -17,7 +17,7 @@ public struct ClipPreviewView: View {
     public let onTogglePin: () -> Void
     public let onDelete: () -> Void
 
-    @State private var previewMode: PreviewMode = .rich
+    @State private var previewMode: PreviewMode = .plain
     @State private var cachedAttributed: AttributedString?
     @State private var cachedItemId: UUID?
 
@@ -64,18 +64,23 @@ public struct ClipPreviewView: View {
                     .padding(.vertical, 8)
             }
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.3))
-            .onAppear {
-                if item.hasRichText {
-                    previewMode = .rich
-                } else {
-                    previewMode = .plain
-                }
-            }
-            .onChange(of: item.id) { _, _ in
-                if item.hasRichText {
-                    previewMode = .rich
-                } else {
-                    previewMode = .plain
+            .task(id: item.id) {
+                // Reset mode and clear stale cache immediately on item switch
+                previewMode = item.hasRichText ? .rich : .plain
+                cachedAttributed = nil
+                cachedItemId = nil
+
+                guard item.hasRichText else { return }
+
+                // Parse HTML/RTF asynchronously off the main thread so arrow-key scrolling never freezes
+                let targetItem = item
+                let rendered: AttributedString? = await Task.detached(priority: .userInitiated) {
+                    Self.buildAttributedString(for: targetItem)
+                }.value
+
+                if !Task.isCancelled, self.item?.id == targetItem.id {
+                    self.cachedAttributed = rendered
+                    self.cachedItemId = targetItem.id
                 }
             }
         } else {
@@ -194,62 +199,81 @@ public struct ClipPreviewView: View {
         }
     }
 
-    private func renderedAttributedString(for item: ClipItem) -> NSAttributedString? {
-        // 1. Try HTML content first
-        if let html = item.htmlContent, let data = html.data(using: .utf8) {
-            let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
-                .documentType: NSAttributedString.DocumentType.html,
-                .characterEncoding: String.Encoding.utf8.rawValue
-            ]
-            if let attr = try? NSAttributedString(data: data, options: options, documentAttributes: nil) {
-                return attr
+    private nonisolated static func buildAttributedString(for item: ClipItem) -> AttributedString? {
+        var nsAttr: NSAttributedString? = nil
+
+        // 1. Try HTML content first (wrapped with clean system font so it renders nicely)
+        if let html = item.htmlContent, !html.isEmpty {
+            let styledHTML = """
+            <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; line-height: 1.45; }
+            code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+            </style>
+            \(html)
+            """
+            if let data = styledHTML.data(using: .utf8) {
+                let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
+                    .documentType: NSAttributedString.DocumentType.html,
+                    .characterEncoding: String.Encoding.utf8.rawValue
+                ]
+                nsAttr = try? NSAttributedString(data: data, options: options, documentAttributes: nil)
             }
         }
 
-        // 2. Try raw HTML in plainText if hasHTML
-        if item.hasHTML, let text = item.plainText, let data = text.data(using: .utf8) {
-            let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
-                .documentType: NSAttributedString.DocumentType.html,
-                .characterEncoding: String.Encoding.utf8.rawValue
-            ]
-            if let attr = try? NSAttributedString(data: data, options: options, documentAttributes: nil) {
-                return attr
+        // 2. Try raw HTML in plainText if hasHTML and htmlContent was nil
+        if nsAttr == nil, item.hasHTML, let text = item.plainText {
+            let styledHTML = """
+            <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; line-height: 1.45; }
+            </style>
+            \(text)
+            """
+            if let data = styledHTML.data(using: .utf8) {
+                let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
+                    .documentType: NSAttributedString.DocumentType.html,
+                    .characterEncoding: String.Encoding.utf8.rawValue
+                ]
+                nsAttr = try? NSAttributedString(data: data, options: options, documentAttributes: nil)
             }
         }
 
         // 3. Try RTF data
-        if let rtf = item.richTextRTF {
+        if nsAttr == nil, let rtf = item.richTextRTF {
             let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
                 .documentType: NSAttributedString.DocumentType.rtf
             ]
-            if let attr = try? NSAttributedString(data: rtf, options: options, documentAttributes: nil) {
-                return attr
+            nsAttr = try? NSAttributedString(data: rtf, options: options, documentAttributes: nil)
+        }
+
+        guard let baseAttr = nsAttr else { return nil }
+
+        // Normalize pure black text color so it remains legible in Dark Mode
+        let mutable = NSMutableAttributedString(attributedString: baseAttr)
+        let fullRange = NSRange(location: 0, length: mutable.length)
+        mutable.enumerateAttribute(.foregroundColor, in: fullRange, options: []) { value, range, _ in
+            if let color = value as? NSColor,
+               let rgb = color.usingColorSpace(.sRGB),
+               rgb.redComponent < 0.15 && rgb.greenComponent < 0.15 && rgb.blueComponent < 0.15 {
+                mutable.removeAttribute(.foregroundColor, range: range)
+            }
+        }
+        // Remove opaque white backgrounds copied from web pages so they blend with frosted glass
+        mutable.enumerateAttribute(.backgroundColor, in: fullRange, options: []) { value, range, _ in
+            if let color = value as? NSColor,
+               let rgb = color.usingColorSpace(.sRGB),
+               rgb.redComponent > 0.9 && rgb.greenComponent > 0.9 && rgb.blueComponent > 0.9 {
+                mutable.removeAttribute(.backgroundColor, range: range)
             }
         }
 
-        return nil
-    }
-
-    private func cachedAttributedString(for item: ClipItem) -> AttributedString? {
-        if cachedItemId == item.id, let cached = cachedAttributed {
-            return cached
-        }
-        if let nsAttr = renderedAttributedString(for: item) {
-            let attr = AttributedString(nsAttr)
-            DispatchQueue.main.async {
-                self.cachedAttributed = attr
-                self.cachedItemId = item.id
-            }
-            return attr
-        }
-        return nil
+        return AttributedString(mutable)
     }
 
     @ViewBuilder
     private func richRenderedView(for item: ClipItem) -> some View {
-        if let attr = cachedAttributedString(for: item) {
+        if cachedItemId == item.id, let attr = cachedAttributed {
             Text(attr)
-                .font(.system(size: 12))
+                .foregroundColor(.primary)
                 .textSelection(.enabled)
                 .lineSpacing(3)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -387,10 +411,10 @@ public struct ClipPreviewView: View {
             Spacer()
 
             Button(action: {
-                ClipboardMonitor.shared.suppressNextRecording()
                 let pasteboard = NSPasteboard.general
                 pasteboard.clearContents()
                 pasteboard.setString(value, forType: .string)
+                ClipboardMonitor.shared.syncChangeCount()
             }) {
                 Image(systemName: "doc.on.doc")
                     .font(.system(size: 11))

@@ -119,9 +119,7 @@ public struct MainPopupView: View {
             }
             .onChange(of: store.selectedItemId) { _, newId in
                 if let newId = newId {
-                    withAnimation(.easeInOut(duration: 0.1)) {
-                        proxy.scrollTo(newId, anchor: .center)
-                    }
+                    proxy.scrollTo(newId)
                 }
             }
         }

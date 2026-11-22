@@ -6,6 +6,8 @@ import ApplicationServices
 public final class PasteService {
     public static let shared = PasteService()
 
+    private var pendingPasteTask: Task<Void, Never>?
+
     private init() {}
 
     /// Check if accessibility permissions are granted for simulating keystrokes
@@ -48,13 +50,15 @@ public final class PasteService {
             return
         }
 
-        // 4. Poll until target application has become active, then simulate Cmd+V
-        Task { @MainActor in
-            let maxWaitIterations = 20 // 20 * 10ms = 200ms max
+        // 4. Poll until target application has become active, then simulate Cmd+V ONCE
+        pendingPasteTask?.cancel()
+        pendingPasteTask = Task { @MainActor in
+            let maxWaitIterations = 25 // 25 * 10ms = 250ms max
             var iterations = 0
 
             if let app = appToActivate {
                 while !app.isActive && iterations < maxWaitIterations {
+                    if Task.isCancelled { return }
                     try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
                     iterations += 1
                 }
@@ -62,31 +66,48 @@ public final class PasteService {
                 try? await Task.sleep(nanoseconds: 50_000_000) // 50ms fallback
             }
 
-            // Adequate stabilization buffer for WindowServer focus settling
-            try? await Task.sleep(nanoseconds: 80_000_000) // 80ms
-            NSLog("PasteFlow: Simulating ⌘V keystroke to pid \(appToActivate?.processIdentifier ?? 0)")
-            self.simulatePasteKeystroke(targetPid: appToActivate?.processIdentifier)
+            if Task.isCancelled { return }
+
+            // Stabilization buffer for WindowServer focus settling
+            try? await Task.sleep(nanoseconds: 60_000_000) // 60ms
+            if Task.isCancelled { return }
+
+            self.simulatePasteKeystroke()
         }
     }
 
     /// Copy item to pasteboard only without pasting
     public func copyToClipboard(item: ClipItem, plainTextOnly: Bool = false) {
-        ClipboardMonitor.shared.suppressNextRecording()
-
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
 
         switch item.type {
         case .text, .link, .color:
-            if let text = item.plainText {
-                pasteboard.setString(text, forType: .string)
+            var typesToDeclare: [NSPasteboard.PasteboardType] = []
+            if item.plainText != nil {
+                typesToDeclare.append(.string)
             }
             if !plainTextOnly {
-                if let rtf = item.richTextRTF {
-                    pasteboard.setData(rtf, forType: .rtf)
+                if item.richTextRTF != nil {
+                    typesToDeclare.append(.rtf)
                 }
-                if let html = item.htmlContent {
-                    pasteboard.setString(html, forType: .html)
+                if item.htmlContent != nil {
+                    typesToDeclare.append(.html)
+                }
+            }
+
+            if !typesToDeclare.isEmpty {
+                pasteboard.declareTypes(typesToDeclare, owner: nil)
+                if let text = item.plainText {
+                    pasteboard.setString(text, forType: .string)
+                }
+                if !plainTextOnly {
+                    if let rtf = item.richTextRTF {
+                        pasteboard.setData(rtf, forType: .rtf)
+                    }
+                    if let html = item.htmlContent {
+                        pasteboard.setString(html, forType: .html)
+                    }
                 }
             }
 
@@ -104,10 +125,13 @@ public final class PasteService {
                 pasteboard.setString(path, forType: .string)
             }
         }
+
+        // Atomically sync monitor's changeCount so PasteFlow does not re-record its own write
+        ClipboardMonitor.shared.syncChangeCount()
     }
 
-    /// Simulate Cmd + V via CGEvent with hidSystemState
-    private func simulatePasteKeystroke(targetPid: pid_t? = nil) {
+    /// Simulate Cmd + V ONCE via CGEvent with hidSystemState
+    private func simulatePasteKeystroke() {
         guard isAccessibilityTrusted else { return }
 
         // Use hidSystemState so modifier key states from prior user taps do not taint the synthetic event
@@ -122,12 +146,8 @@ public final class PasteService {
         keyDown.flags = .maskCommand
         keyUp.flags = .maskCommand
 
-        if let pid = targetPid, pid > 0 {
-            keyDown.postToPid(pid)
-            keyUp.postToPid(pid)
-        }
         keyDown.post(tap: .cghidEventTap)
         keyUp.post(tap: .cghidEventTap)
-        NSLog("PasteFlow: ⌘V posted successfully (targetPid: \(targetPid ?? 0))")
+        NSLog("PasteFlow: ⌘V posted successfully")
     }
 }

@@ -119,3 +119,25 @@ import AppKit
     #expect(pb.string(forType: .html) == "<b>Hello HTML</b>")
     #expect(pb.data(forType: .rtf) != nil)
 }
+
+@Test @MainActor func testDeleteKeepsSelectionPosition() {
+    let store = HistoryStore()
+    let item1 = ClipItem(type: .text, plainText: "Item 1")
+    let item2 = ClipItem(type: .text, plainText: "Item 2")
+    let item3 = ClipItem(type: .text, plainText: "Item 3")
+    store.items = [item1, item2, item3]
+    store.selectedItemId = item2.id
+
+    store.delete(id: item2.id)
+    #expect(store.selectedItemId == item3.id)
+
+    store.delete(id: item3.id)
+    #expect(store.selectedItemId == item1.id)
+}
+
+@Test func testEditorSourceDetectionAccuracy() {
+    let obsItem = ClipItem(type: .text, plainText: "hello", sourceAppName: "OBS Studio", sourceAppBundleId: "com.obsproject.obs-studio")
+    let vscodeItem = ClipItem(type: .text, plainText: "hello", sourceAppName: "Code", sourceAppBundleId: "com.microsoft.VSCode")
+    #expect(obsItem.isEditorSource == false)
+    #expect(vscodeItem.isEditorSource == true)
+}
