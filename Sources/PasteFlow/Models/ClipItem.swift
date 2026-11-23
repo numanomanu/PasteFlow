@@ -202,11 +202,16 @@ public struct ClipItem: Identifiable, Codable, Equatable, Sendable {
                 self.title = firstLine ?? "(Empty text)"
                 switch type {
                 case .text:
-                    self.subtitle = secondLine ?? "\(text.count) chars"
+                    self.subtitle = secondLine ?? ""
                 case .link:
-                    self.subtitle = text.count > 120 ? String(text.prefix(120)) : text
+                    if let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+                       let host = url.host {
+                        self.subtitle = host
+                    } else {
+                        self.subtitle = ""
+                    }
                 case .color:
-                    self.subtitle = colorHex ?? self.title
+                    self.subtitle = colorHex ?? ""
                 default:
                     self.subtitle = ""
                 }

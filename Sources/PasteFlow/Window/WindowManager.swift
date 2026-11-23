@@ -90,9 +90,14 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
     public func show() {
         guard let panel = panel else { return }
 
-        // Always reset to main list view and clear search on open
+        // Always reset to main list view, All category, and clear search on open
         showingPreferences = false
-        HistoryStore.shared.searchText = ""
+        if HistoryStore.shared.selectedCategory != .all {
+            HistoryStore.shared.selectedCategory = .all
+        }
+        if !HistoryStore.shared.searchText.isEmpty {
+            HistoryStore.shared.searchText = ""
+        }
         HistoryStore.shared.selectFirstItem()
 
         // Capture the currently frontmost application before showing our panel
@@ -196,14 +201,16 @@ public final class WindowManager: ObservableObject, KeyEventHandler {
             return true
         }
 
-        // Up arrow (key code 126) without modifiers
-        if event.keyCode == 126 && !hasNavigationModifiers && !flags.contains(.shift) {
+        // Up arrow (key code 126) or Ctrl + P (Emacs/macOS standard)
+        if (event.keyCode == 126 && !hasNavigationModifiers && !flags.contains(.shift)) ||
+           (flags == .control && event.charactersIgnoringModifiers?.lowercased() == "p") {
             store.selectPrevious()
             return true
         }
 
-        // Down arrow (key code 125) without modifiers
-        if event.keyCode == 125 && !hasNavigationModifiers && !flags.contains(.shift) {
+        // Down arrow (key code 125) or Ctrl + N (Emacs/macOS standard)
+        if (event.keyCode == 125 && !hasNavigationModifiers && !flags.contains(.shift)) ||
+           (flags == .control && event.charactersIgnoringModifiers?.lowercased() == "n") {
             store.selectNext()
             return true
         }

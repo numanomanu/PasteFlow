@@ -418,19 +418,30 @@ public final class HistoryStore: ObservableObject {
     private func scheduleSave() {
         saveTask?.cancel()
         saveTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s debounce
-            guard let self = self else { return }
-            self.saveHistoryToDisk()
+            try? await Task.sleep(nanoseconds: 400_000_000) // 0.4s debounce
+            guard !Task.isCancelled, let self = self else { return }
+            let snapshot = self.items
+            let fileURL = self.historyFileURL
+            await Task.detached(priority: .utility) {
+                Self.writeHistory(snapshot, to: fileURL)
+            }.value
         }
     }
     
     private func saveHistoryToDisk() {
+        let snapshot = self.items
+        let fileURL = self.historyFileURL
+        Task.detached(priority: .utility) {
+            Self.writeHistory(snapshot, to: fileURL)
+        }
+    }
+
+    private nonisolated static func writeHistory(_ items: [ClipItem], to fileURL: URL) {
         do {
             let encoder = JSONEncoder()
-            encoder.outputFormatting = .prettyPrinted
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(items)
-            try data.write(to: historyFileURL, options: .atomic)
+            try data.write(to: fileURL, options: .atomic)
         } catch {
             print("Failed to save history: \(error)")
         }

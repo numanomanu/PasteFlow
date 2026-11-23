@@ -69,7 +69,7 @@ public final class PasteService {
             if Task.isCancelled { return }
 
             // Stabilization buffer for WindowServer focus settling
-            try? await Task.sleep(nanoseconds: 60_000_000) // 60ms
+            try? await Task.sleep(nanoseconds: 40_000_000) // 40ms
             if Task.isCancelled { return }
 
             self.simulatePasteKeystroke()

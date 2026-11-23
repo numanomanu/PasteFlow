@@ -148,15 +148,9 @@ public struct MainPopupView: View {
             shortcutHint(key: "Tab", label: "Filter")
             shortcutHint(key: "⌘1-9", label: "Quick")
             shortcutHint(key: "⌘F", label: "Fav")
-            shortcutHint(key: "⌘C", label: "Copy")
             shortcutHint(key: "⌘⌫", label: "Del")
-            shortcutHint(key: "Esc", label: "Close")
 
             Spacer()
-
-            Text("\(store.filteredItems.count) items")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
 
             Button(action: {
                 withAnimation(.easeInOut(duration: 0.15)) {

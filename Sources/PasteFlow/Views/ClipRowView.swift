@@ -56,10 +56,12 @@ public struct ClipRowView: View, Equatable {
                 }
 
                 HStack(spacing: 6) {
-                    Text(item.subtitle)
-                        .font(.system(size: 11))
-                        .foregroundColor(isSelected ? .white.opacity(0.8) : .secondary)
-                        .lineLimit(1)
+                    if !item.subtitle.isEmpty {
+                        Text(item.subtitle)
+                            .font(.system(size: 11))
+                            .foregroundColor(isSelected ? .white.opacity(0.8) : .secondary)
+                            .lineLimit(1)
+                    }
 
                     if item.hasRichText {
                         Text(item.hasHTML ? "HTML" : "RTF")

@@ -510,18 +510,9 @@ public struct ClipPreviewView: View {
 
     private func previewFooter(for item: ClipItem) -> some View {
         HStack {
-            // Stats (chars, lines)
-            HStack(spacing: 8) {
-                if item.type == .text {
-                    Text("\(item.charCount) chars")
-                    Text("•")
-                    Text("\(item.lineCount) lines")
-                } else {
-                    Text(item.timeAgo)
-                }
-            }
-            .font(.system(size: 10))
-            .foregroundColor(.secondary)
+            Text(item.timeAgo)
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
 
             Spacer()
 
